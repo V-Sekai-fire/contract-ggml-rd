@@ -177,6 +177,7 @@ inductive Kind
   | f16
   | bf16
   | f32
+  | i32   -- a destination only: a float truncated toward zero, as ggml-cpu's (int32_t)
 deriving BEq, Repr
 
 /-- Load element `e` of `buf` as its raw bits (32 or 16). -/
@@ -197,6 +198,7 @@ def conv (s d : Kind) (x : SlangExpr) : SlangExpr :=
     | _ => x
   match s, d with
   | .b32, _ | .b16, _ => x
+  | _, .i32 => .cast (.scalar .uint) (.cast (.scalar .int) (.call "asfloat" [toF32]))
   | _, .f16 => if s == .f16 then x else .call "f32_to_f16" [toF32]
   | _, .bf16 => if s == .bf16 then x else .call "f32_to_bf16" [toF32]
   | _, _ => toF32

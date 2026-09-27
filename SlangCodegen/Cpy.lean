@@ -21,6 +21,8 @@ order: `unravel(l)` over src0's ne, then src0's strides.
     cpy_b16        f16 -> f16, bf16 -> bf16, i16 -> i16   bits
     cpy_f32_f16    cpy_f32_bf16    cpy_f16_f32    cpy_bf16_f32
     cpy_f16_bf16   cpy_bf16_f16   (through f32, as ggml-cpu)
+    cpy_f32_i32    truncated toward zero, as ggml-cpu's (int32_t) (RF-DETR's
+                   deformable attention casts floor()ed sample positions to rows)
 -/
 
 namespace Ggml.SlangCodegen.Cpy
@@ -52,6 +54,7 @@ def cpyF16F32 : SlangShaderModule := shader .f16 .f32
 def cpyBf16F32 : SlangShaderModule := shader .bf16 .f32
 def cpyF16Bf16 : SlangShaderModule := shader .f16 .bf16
 def cpyBf16F16 : SlangShaderModule := shader .bf16 .f16
+def cpyF32I32 : SlangShaderModule := shader .f32 .i32
 
 def kernels : List (String × SlangShaderModule) :=
   [ ("cpy_b32", cpyB32)
@@ -61,7 +64,8 @@ def kernels : List (String × SlangShaderModule) :=
   , ("cpy_f16_f32", cpyF16F32)
   , ("cpy_bf16_f32", cpyBf16F32)
   , ("cpy_f16_bf16", cpyF16Bf16)
-  , ("cpy_bf16_f16", cpyBf16F16) ]
+  , ("cpy_bf16_f16", cpyBf16F16)
+  , ("cpy_f32_i32", cpyF32I32) ]
 
 /-! ## Pins: every kernel's text, from pinned pieces -/
 
@@ -105,5 +109,8 @@ example : emit cpyF16Bf16 =
 example : emit cpyBf16F16 =
     assemble [ld16S0Text, f32ToF16Text] (ret ("f32_to_f16((" ++ ld ++ " << 16u))")) true := by
   native_decide
+
+example : emitFunction (valCpy .f32 .i32) = ret ("uint(int(asfloat(" ++ w32 ++ ")))") := by native_decide
+example : emit cpyF32I32 = assemble [] (ret ("uint(int(asfloat(" ++ w32 ++ ")))")) false := by native_decide
 
 end Ggml.SlangCodegen.Cpy
