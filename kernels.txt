@@ -107,3 +107,4 @@ conv2d_f32
 conv2d_f16
 conv_transpose_2d_f32
 conv_transpose_2d_f16
+cpy_f32_i32
