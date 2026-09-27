@@ -1,4 +1,4 @@
-// ggml-rd ops: CPY, DUP and CONT among f32, f16 and bf16 (and i32 -> i32,
+// ggml-rd ops: CPY, DUP and CONT among f32, f16 and bf16 (and f32 -> i32 truncating, i32 -> i32,
 // i16 -> i16 as bits), any strides on both sides, and reshaping copies (the
 // shapes may differ; ggml only asks for equal element counts).
 //
@@ -38,6 +38,7 @@ const char *kernel_for(ggml_type s, ggml_type d) {
 	if (s == GGML_TYPE_BF16 && d == GGML_TYPE_F32) return "cpy_bf16_f32";
 	if (s == GGML_TYPE_F16 && d == GGML_TYPE_BF16) return "cpy_f16_bf16";
 	if (s == GGML_TYPE_BF16 && d == GGML_TYPE_F16) return "cpy_bf16_f16";
+	if (s == GGML_TYPE_F32 && d == GGML_TYPE_I32) return "cpy_f32_i32";
 	return nullptr;
 }
 
