@@ -71,6 +71,32 @@ void add_cpy(std::vector<L2Case> &out, ggml_type ts, ggml_type td, Ne ne, Ne ne_
 	out.push_back(c);
 }
 
+// F32 -> I32 (cpy_f32_i32; RF-DETR's deformable attention): ggml-cpu's C cast,
+// truncation toward zero, so exact. The f32 source cycles through the edges
+// first -- signed halves, -0, the largest floats inside int32 -- then the
+// uniform [-150, 150) fill.
+void add_cpy_f32_i32(std::vector<L2Case> &out, Ne ne, Ne perm_src = { 0, 0, 0, 0 }, Ne perm_dst = { 0, 0, 0, 0 },
+		Ne alloc = { 0, 0, 0, 0 }) {
+	add_cpy(out, GGML_TYPE_F32, GGML_TYPE_I32, ne, { -1, -1, -1, -1 }, perm_src, perm_dst, false, alloc);
+	L2Case &c = out.back();
+	c.max_nmse = 0.0;
+	c.init = [](ggml_tensor *t, std::mt19937 &rng) {
+		if (t->type != GGML_TYPE_F32) {
+			return false;
+		}
+		static const float edges[] = { 0.5f, -0.5f, 1.5f, -1.5f, 0.999999f, -0.999999f, -0.0f, 0.0f, 2.5f, -2.5f,
+			1e6f, -1e6f, 16777217.0f, -16777217.0f, 2147483520.0f, -2147483648.0f };
+		const size_t n_edges = sizeof edges / sizeof edges[0];
+		std::uniform_real_distribution<float> u(-150.0f, 150.0f);
+		float *p = static_cast<float *>(t->data);
+		const int64_t n = ggml_nelements(t);
+		for (int64_t i = 0; i < n; ++i) {
+			p[i] = size_t(i) < n_edges ? edges[i] : u(rng);
+		}
+		return true;
+	};
+}
+
 void add_get_rows(std::vector<L2Case> &out, ggml_type t, int n, int m, int r, int be1, int be2, bool v) {
 	L2Case c;
 	char b[128];
@@ -197,6 +223,12 @@ L2_CASES(move) {
 	add_cpy(out, F32, F32, { 128, 8, 2, 514 }, { -1, -1, -1, -1 }, { 0, 2, 1, 3 });
 	add_cpy(out, F16, F16, { 1024, 1024, 1, 1 }, { -1, -1, -1, -1 }, { 0, 2, 1, 3 });
 	add_cpy(out, BF16, F32, { 1536, 7, 1, 1 });
+	// F32 -> I32: test_cpy's two (contiguous, permuted source), a permuted
+	// destination, and an odd shape into a strided destination.
+	add_cpy_f32_i32(out, { 256, 2, 3, 4 });
+	add_cpy_f32_i32(out, { 256, 2, 3, 4 }, { 1, 0, 2, 3 });
+	add_cpy_f32_i32(out, { 256, 4, 4, 4 }, { 0, 0, 0, 0 }, { 0, 2, 1, 3 });
+	add_cpy_f32_i32(out, { 7, 5, 3, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 9, 5, 3, 1 });
 	// Range edges of the conversions: large, tiny (f16 subnormal) values.
 	{
 		L2Case c;
