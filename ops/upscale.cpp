@@ -32,7 +32,7 @@ const char *kernel_for(const ggml_tensor *op) {
 		return "upscale_nearest_f32";
 	}
 	if (mode == int32_t(GGML_SCALE_MODE_BILINEAR) ||
-			mode == int32_t(GGML_SCALE_MODE_BILINEAR | GGML_SCALE_FLAG_ALIGN_CORNERS)) {
+			mode == (int32_t(GGML_SCALE_MODE_BILINEAR) | int32_t(GGML_SCALE_FLAG_ALIGN_CORNERS))) {
 		return "upscale_bilinear_f32";
 	}
 	return nullptr;
