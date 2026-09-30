@@ -41,6 +41,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
+RUNTIME="${GUEST_RUNTIME_ROOT:-$(cd "$ROOT/../../2-contract/guest-runtime" && pwd)}"
 LEAN="${CLOTH_LEAN:-$ROOT/lean}"
 BUILD="${BUILD_DIR:-$ROOT/build}"
 SLANGC="${SLANGC:-slangc}"
@@ -131,7 +132,7 @@ echo "== fixed-layout check + kernel table =="
 	--out "$HERE/GgmlKernelTable.inc" $KERNELS
 echo "== embedding SPIR-V =="
 # The reflection JSON sits beside each .spv; embed_spv takes only *.spv.
-"$PY" "$HERE/../embed_spv.py" --namespace ggml_kernels "$BUILD/spv-ggml" "$BUILD/ggml_kernels.inc"
+"$PY" "$RUNTIME/kernels/embed_spv.py" --namespace ggml_kernels "$BUILD/spv-ggml" "$BUILD/ggml_kernels.inc"
 echo "== controls: compiled alike, the layout check must refuse each =="
 for k in $CONTROLS; do
 	( cd "$HERE" && "$SLANGC" -target spirv -profile sm_6_5 -stage compute -entry main -O0 -preserve-params \
@@ -143,4 +144,4 @@ for k in $CONTROLS; do
 	fi
 	echo "control $k: refused by the layout check, as it must be"
 done
-"$PY" "$HERE/../embed_spv.py" --namespace ggml_controls "$BUILD/spv-ggml-controls" "$BUILD/ggml_controls.inc"
+"$PY" "$RUNTIME/kernels/embed_spv.py" --namespace ggml_controls "$BUILD/spv-ggml-controls" "$BUILD/ggml_controls.inc"

@@ -12,6 +12,13 @@ project(ggml_rd_l2 C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+# ggml and the Slang runtime headers are sibling checkouts in the manifest layout.
+if(NOT DEFINED GGML_ROOT)
+	get_filename_component(GGML_ROOT "${ROOT}/../ggml" ABSOLUTE)
+endif()
+if(NOT DEFINED GUEST_RUNTIME_ROOT)
+	get_filename_component(GUEST_RUNTIME_ROOT "${ROOT}/../guest-runtime" ABSOLUTE)
+endif()
 
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
@@ -20,7 +27,7 @@ set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-add_subdirectory(${ROOT}/vendor/ggml ggml EXCLUDE_FROM_ALL)
+add_subdirectory(${GGML_ROOT} ggml EXCLUDE_FROM_ALL)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(HOST_KERNELS ${CMAKE_BINARY_DIR}/host_kernels.cpp)
@@ -48,7 +55,7 @@ target_include_directories(ggml_rd_l2 PRIVATE
 	${ROOT}/guest/ggml-rd
 	${ROOT}/kernels/ggml
 	${ROOT}/kernels/ggml/cpp
-	${ROOT}/guest/avbd/slang-rt
+	${GUEST_RUNTIME_ROOT}/guest/avbd/slang-rt
 )
 # An emit's out-of-range index reads and writes element 0 instead of leaving
 # the memory block, as a robust Vulkan device keeps an access inside its

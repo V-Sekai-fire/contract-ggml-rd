@@ -16,6 +16,13 @@ project(ggml_graph_oracle C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 get_filename_component(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+# ggml and the Slang runtime headers are sibling checkouts in the manifest layout.
+if(NOT DEFINED GGML_ROOT)
+	get_filename_component(GGML_ROOT "${ROOT}/../ggml" ABSOLUTE)
+endif()
+if(NOT DEFINED GUEST_RUNTIME_ROOT)
+	get_filename_component(GUEST_RUNTIME_ROOT "${ROOT}/../guest-runtime" ABSOLUTE)
+endif()
 
 set(GGML_NATIVE ON CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
@@ -28,7 +35,7 @@ option(ORACLE_VULKAN "ggml-vulkan in the oracle" ON)
 set(GGML_VULKAN ${ORACLE_VULKAN} CACHE BOOL "" FORCE)
 set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-add_subdirectory(${ROOT}/vendor/ggml ggml EXCLUDE_FROM_ALL)
+add_subdirectory(${GGML_ROOT} ggml EXCLUDE_FROM_ALL)
 
 add_executable(ggml_graph_oracle
 	main.cpp
