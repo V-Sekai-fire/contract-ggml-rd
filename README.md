@@ -1,5 +1,19 @@
 # contract-ggml-rd
 
-ggml's backend on Godot's RenderingDevice for godot-sandbox guests: Lean-emitted kernels, a CPU fallback, L2 and graph oracles.
+The ggml backend on the engine's rendering device for sandbox guests: Lean-emitted kernels, a CPU fallback, and the oracles that check them.
 
-Split out of `interactor-dress-on` at `310b52e` with its history (`git subtree`). It sits at `2-contract/ggml-rd` in the goal manifest (`contract-manifest-taskweft`), and finds the repositories it builds against as sibling checkouts at their manifest paths. `transport-meshing-pen` builds the guest ELFs (`build.sh`, `tools/build.exs`).
+## What it is for
+
+It is the route by which ggml reaches the GPU inside sandbox guests, so no guest carries a tensor runtime of its own. RFD 2290 owns that decision.
+
+## Build
+
+```sh
+cd lean && lake exe emit_ggml
+```
+
+That emits the kernels. `transport-meshing-pen`'s build compiles the guest programs, finding this repository and its siblings at their goal-manifest paths.
+
+## Licence
+
+The repository does not state a licence of its own; `lean/CITATION.cff` names MIT for the Lean tree.
