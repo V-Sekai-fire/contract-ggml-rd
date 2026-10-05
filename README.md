@@ -9,10 +9,10 @@ It is the route by which ggml reaches the GPU inside sandbox guests, so no guest
 ## Build
 
 ```sh
-cd lean && lake exe emit_ggml
+kernels/ggml/gen.sh
 ```
 
-That emits the kernels. `transport-meshing-pen`'s build compiles the guest programs, finding this repository and its siblings at their goal-manifest paths.
+It emits the kernels from Lean, checks them against the committed `slang/` and compiles them for both targets; the header of `gen.sh` names its modes. `transport-meshing-pen`'s build compiles the guest programs, finding this repository and its siblings at their goal-manifest paths.
 
 ## Licence
 
