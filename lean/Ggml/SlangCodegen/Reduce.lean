@@ -108,16 +108,14 @@ def kernels : List (String × SlangShaderModule) :=
 
 /-- SUM_ROWS is MEAN's kernel with the divide gone: one reduction, then
     thread 0 writes the row's one element. -/
-example : (LeanSlang.emit sumRowsF32).endsWith
-"  float sumx = sh[0u];
+example : (LeanSlang.emit sumRowsF32).endsWith "  float sumx = sh[0u];
   GroupMemoryBarrierWithGroupSync();
   if ((t == 0u)) {
     dst[yb] = sumx;
   }
 }" := by native_decide
 
-example : (LeanSlang.emit sumRowsF32Serial).endsWith
-"  float sumx = sh[0u];
+example : (LeanSlang.emit sumRowsF32Serial).endsWith "  float sumx = sh[0u];
   dst[yb] = sumx;
 }" := by native_decide
 
@@ -127,8 +125,7 @@ example : ((LeanSlang.emit sumRowsF32).splitOn "GroupMemoryBarrierWithGroupSync(
     ((LeanSlang.emit sumRowsF32Serial).splitOn "GroupMemoryBarrier").length = 1 := by
   native_decide
 
-def expectedSum : String :=
-"struct Slot {
+def expectedSum : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -233,8 +230,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
 example : LeanSlang.emit sumF32 = expectedSum := by native_decide
 
 /-- The Serial sibling: one thread, `sh` local, each phase a loop over `t`. -/
-example : (LeanSlang.emit sumF32Serial).endsWith
-"[shader(\"compute\")] [numthreads(1, 1, 1)]
+example : (LeanSlang.emit sumF32Serial).endsWith "[shader(\"compute\")] [numthreads(1, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint e = ((((gid.y * pw(54u)) + gid.x) * 1u) + lid.x);
   if ((e >= pw(53u))) {

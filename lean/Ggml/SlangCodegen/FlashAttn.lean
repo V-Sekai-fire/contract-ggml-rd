@@ -338,8 +338,7 @@ and Q rounded to f16; the D = 128 serial sibling is the D = 64 one with its
 column loops and arrays widened. -/
 
 /-- The f32 tiled kernel, D = 64. -/
-def expectedTiledF32D64 : String :=
-"struct Slot {
+def expectedTiledF32D64 : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -521,8 +520,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
 }"
 
 /-- The f32 tiled kernel, D = 128: the census kernel. -/
-def expectedTiledF32D128 : String :=
-"struct Slot {
+def expectedTiledF32D128 : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -736,8 +734,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
 }"
 
 /-- The f32 serial sibling, D = 64. -/
-def expectedSerialF32D64 : String :=
-"struct Slot {
+def expectedSerialF32D64 : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -847,8 +844,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   }
 }"
 
-example : LeanSlang.emitFunction (fnLdF16 "s1") =
-"float ld_f16_s1(uint e) {
+example : LeanSlang.emitFunction (fnLdF16 "s1") = "float ld_f16_s1(uint e) {
   uint w = s1[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
   return f16tof32(h);

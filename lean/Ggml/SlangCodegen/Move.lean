@@ -277,15 +277,13 @@ def moveModule (dst16 : Bool) (extra : List SlangFunctionDecl) (valFn : SlangFun
 
 /-! ## Pinned text of the shared pieces -/
 
-def ld16S0Text : String :=
-"uint ld16_s0(uint e) {
+def ld16S0Text : String := "uint ld16_s0(uint e) {
   return ((s0[(e >> 1u)] >> ((e & 1u) * 16u)) & 65535u);
 }"
 example : emitFunction (fnLd16 "s0") = ld16S0Text := by native_decide
 example : emitFunction (fnLd16 "s1") = ld16S0Text.replace "s0" "s1" := by native_decide
 
-def f16ToF32Text : String :=
-"uint f16_to_f32(uint h) {
+def f16ToF32Text : String := "uint f16_to_f32(uint h) {
   uint s = ((h & 32768u) << 16u);
   uint x = ((h >> 10u) & 31u);
   uint m = (h & 1023u);
@@ -307,8 +305,7 @@ def f16ToF32Text : String :=
 }"
 example : emitFunction fnF16ToF32 = f16ToF32Text := by native_decide
 
-def f32ToF16Text : String :=
-"uint f32_to_f16(uint b) {
+def f32ToF16Text : String := "uint f32_to_f16(uint b) {
   uint s = ((b >> 16u) & 32768u);
   uint a = (b & 2147483647u);
   if ((a > 2139095040u)) {
@@ -331,8 +328,7 @@ def f32ToF16Text : String :=
 }"
 example : emitFunction fnF32ToF16 = f32ToF16Text := by native_decide
 
-def f32ToBf16Text : String :=
-"uint f32_to_bf16(uint b) {
+def f32ToBf16Text : String := "uint f32_to_bf16(uint b) {
   if (((b & 2147483647u) > 2139095040u)) {
     return ((b >> 16u) | 64u);
   }
@@ -340,8 +336,7 @@ def f32ToBf16Text : String :=
 }"
 example : emitFunction fnF32ToBf16 = f32ToBf16Text := by native_decide
 
-def entry32Text : String :=
-"[shader(\"compute\")] [numthreads(256, 1, 1)]
+def entry32Text : String := "[shader(\"compute\")] [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint e = ((((gid.y * pw(54u)) + gid.x) * 256u) + lid.x);
   if ((e >= pw(53u))) {
@@ -356,8 +351,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
 }"
 example : emitFunction entry32 = entry32Text := by native_decide
 
-def entry16Text : String :=
-"[shader(\"compute\")] [numthreads(256, 1, 1)]
+def entry16Text : String := "[shader(\"compute\")] [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint e = ((((gid.y * pw(54u)) + gid.x) * 256u) + lid.x);
   if ((e >= pw(53u))) {
@@ -416,8 +410,7 @@ example : emitFunction entry16 = entry16Text := by native_decide
 
 /-- The text every move kernel starts with: Slot, the all-`uint`
     globals, pw, unravel4, off4. -/
-def preludeText : String :=
-"struct Slot {
+def preludeText : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

@@ -107,8 +107,7 @@ def siblings : List (String × String) :=
   pairs.map (fun (a, b) => ("mul_mat_tiled_" ++ suffix a b, "mul_mat_serial_tiled_" ++ suffix a b)) ++
   pairs.map (fun (a, b) => ("mul_mat_vec_" ++ suffix a b, "mul_mat_serial_vec_" ++ suffix a b))
 
-def expectedTiledMain : String :=
-"[shader(\"compute\")] [numthreads(16, 16, 1)]
+def expectedTiledMain : String := "[shader(\"compute\")] [numthreads(16, 16, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint K = pw(10u);
   uint M = pw(11u);
@@ -211,8 +210,7 @@ example : LeanSlang.emitFunction (entry 16 16 tiledBody) =
       "  if (((i0 < M)".intercalate ((Ggml.SlangCodegen.MulMatTiled.expected.splitOn "  if (((i0 < M)").drop 1) := by
   native_decide
 
-def expectedVecTail : String :=
-"  uint lane = lid.x;
+def expectedVecTail : String := "  uint lane = lid.x;
   if (((lane != 0u) || (row >= M))) {
     return;
   }

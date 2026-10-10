@@ -70,8 +70,7 @@ def kernels : List (String × SlangShaderModule) :=
 /-! ## Pins: every kernel's text, from pinned pieces -/
 
 /-- The val of cpy_b32; the others differ in the returned expression only. -/
-def valB32Text : String :=
-"uint val(uint i0, uint i1, uint i2, uint i3) {
+def valB32Text : String := "uint val(uint i0, uint i1, uint i2, uint i3) {
   uint l = ((((i0 * pw(56u)) + (i1 * pw(57u))) + (i2 * pw(58u))) + (i3 * pw(59u)));
   uint j0;
   uint j1;

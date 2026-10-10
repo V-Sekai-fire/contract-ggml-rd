@@ -183,8 +183,7 @@ def rowModule (tg : Nat) (var : Variant) (helpers : List SlangFunctionDecl) (bod
 
 /-! ## Pinned pieces -/
 
-example : String.intercalate "\n" ((reduce 256 .par "s" .sum (fLit 0.0) (v "x")).map (emitStmt 1)) =
-"  float acc_s = 0.0f;
+example : String.intercalate "\n" ((reduce 256 .par "s" .sum (fLit 0.0) (v "x")).map (emitStmt 1)) = "  float acc_s = 0.0f;
   uint i_s = t;
   while ((i_s < n)) {
     float x = s0[(xb + (i_s * xs))];
@@ -230,8 +229,7 @@ example : String.intercalate "\n" ((reduce 256 .par "s" .sum (fLit 0.0) (v "x"))
 
 /-- The Serial reduction: the same partials (each a loop body over `t`), the
     same tree, in the same order. -/
-example : String.intercalate "\n" ((reduce 256 .ser "s" .sum (fLit 0.0) (v "x")).map (emitStmt 1)) =
-"  for (uint t = 0u; t < 256u; ++t) {
+example : String.intercalate "\n" ((reduce 256 .ser "s" .sum (fLit 0.0) (v "x")).map (emitStmt 1)) = "  for (uint t = 0u; t < 256u; ++t) {
     float acc_s = 0.0f;
     uint i_s = t;
     while ((i_s < n)) {
@@ -267,8 +265,7 @@ example : String.intercalate "\n" ((reduce 256 .ser "s" .sum (fLit 0.0) (v "x"))
   }
   float s = sh[0u];" := by native_decide
 
-example : String.intercalate "\n" (prologue.map (emitStmt 1)) =
-"  uint n = pw(10u);
+example : String.intercalate "\n" (prologue.map (emitStmt 1)) = "  uint n = pw(10u);
   uint r1 = (row % pw(11u));
   uint rr = (row / pw(11u));
   uint r2 = (rr % pw(12u));

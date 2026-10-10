@@ -97,8 +97,7 @@ def kernels : List (String × SlangShaderModule) :=
 
 /-! ## Pins: the entry in full; the declarations and helpers are CONV_3D's. -/
 
-def expectedEntryF32 : String :=
-"[shader(\"compute\")] [numthreads(256, 1, 1)]
+def expectedEntryF32 : String := "[shader(\"compute\")] [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint e = ((((gid.y * pw(54u)) + gid.x) * 256u) + lid.x);
   if ((e >= pw(53u))) {

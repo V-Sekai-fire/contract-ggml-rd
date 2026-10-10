@@ -184,8 +184,7 @@ def kernels : List (String × SlangShaderModule) :=
   [ ("upscale_nearest_f32", upscaleNearestF32)
   , ("upscale_bilinear_f32", upscaleBilinearF32) ]
 
-def expected : String :=
-"struct Slot {
+def expected : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -251,8 +250,7 @@ example : upscaleNearestF32.entryPointName = "main" := by native_decide
 /-- The bilinear kernel: the nearest kernel's prelude (Slot, the globals,
     pw, unravel4, off4, src_idx), then its two clamps and its entry. -/
 example : LeanSlang.emit upscaleBilinearF32 =
-    (expected.splitOn "[shader(").head! ++
-"int clamp_idx(int i, int hi) {
+    (expected.splitOn "[shader(").head! ++ "int clamp_idx(int i, int hi) {
   int m = ((hi < i) ? hi : i);
   return ((m < 0) ? 0 : m);
 }

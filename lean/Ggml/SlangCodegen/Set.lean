@@ -84,8 +84,7 @@ def setF32 : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   [ ("set_f32", setF32) ]
 
-example : (LeanSlang.emit setF32).endsWith
-"  uint i0;
+example : (LeanSlang.emit setF32).endsWith "  uint i0;
   uint i1;
   uint i2;
   uint i3;

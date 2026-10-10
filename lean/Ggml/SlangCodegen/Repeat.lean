@@ -38,14 +38,12 @@ def kernels : List (String × SlangShaderModule) :=
   [ ("repeat_b32", repeatB32)
   , ("repeat_b16", repeatB16) ]
 
-def valB32Text : String :=
-"uint val(uint i0, uint i1, uint i2, uint i3) {
+def valB32Text : String := "uint val(uint i0, uint i1, uint i2, uint i3) {
   return s0[off4(10u, (i0 % pw(10u)), (i1 % pw(11u)), (i2 % pw(12u)), (i3 % pw(13u)))];
 }"
 example : emitFunction (valRepeat .b32) = valB32Text := by native_decide
 
-def valB16Text : String :=
-"uint val(uint i0, uint i1, uint i2, uint i3) {
+def valB16Text : String := "uint val(uint i0, uint i1, uint i2, uint i3) {
   return ld16_s0(off4(10u, (i0 % pw(10u)), (i1 % pw(11u)), (i2 % pw(12u)), (i3 % pw(13u))));
 }"
 example : emitFunction (valRepeat .b16) = valB16Text := by native_decide

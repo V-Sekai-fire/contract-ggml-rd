@@ -88,8 +88,7 @@ def shader (a b : Ty) : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   pairs.map (fun (a, b) => ("mul_mat_vec_" ++ suffix a b, shader a b))
 
-def expectedMain : String :=
-"[shader(\"compute\")] [numthreads(32, 8, 1)]
+def expectedMain : String := "[shader(\"compute\")] [numthreads(32, 8, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint K = pw(10u);
   uint M = pw(11u);

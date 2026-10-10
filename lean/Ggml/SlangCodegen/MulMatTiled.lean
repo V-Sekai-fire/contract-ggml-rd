@@ -115,8 +115,7 @@ def shader (a b : Ty) : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   pairs.map (fun (a, b) => ("mul_mat_tiled_" ++ suffix a b, shader a b))
 
-def expected : String :=
-"struct Slot {
+def expected : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

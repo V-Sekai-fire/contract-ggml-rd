@@ -73,8 +73,7 @@ def argsortF32 : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   [ ("argsort_f32", argsortF32) ]
 
-example : (LeanSlang.emit argsortF32).endsWith
-"  uint i0;
+example : (LeanSlang.emit argsortF32).endsWith "  uint i0;
   uint i1;
   uint i2;
   uint i3;

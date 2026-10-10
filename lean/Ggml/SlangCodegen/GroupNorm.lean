@@ -154,8 +154,7 @@ def kernels : List (String × SlangShaderModule) :=
 
 /-! ## Pins -/
 
-def expectedHead : String :=
-"struct Slot {
+def expectedHead : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -220,10 +219,8 @@ def reduceText (tg : Nat) (var : Variant) (name : String) (f : SlangExpr) : Stri
   String.intercalate "\n" ((reduceG tg var name f).map (emitStmt 1))
 
 example : LeanSlang.emit groupNormF32 =
-    expectedHead ++ reduceText 256 .par "sumx" x ++ "\n" ++
-"  float mean = (sumx / float(n));
-" ++ reduceText 256 .par "sumd" (mul (sub x (v "mean")) (sub x (v "mean"))) ++ "\n" ++
-"  float variance = (sumd / float(n));
+    expectedHead ++ reduceText 256 .par "sumx" x ++ "\n" ++ "  float mean = (sumx / float(n));
+" ++ reduceText 256 .par "sumd" (mul (sub x (v "mean")) (sub x (v "mean"))) ++ "\n" ++ "  float variance = (sumd / float(n));
   float scale = (1.0f / sqrt((variance + eps)));
   uint j = t;
   while ((j < n)) {
@@ -249,10 +246,8 @@ example : LeanSlang.emit groupNormF32Serial =
     ((expectedHead.replace "groupshared float sh[256];\n\n" "").replace
         "[numthreads(256, 1, 1)]" "[numthreads(1, 1, 1)]").replace
         "  uint t = lid.x;\n" "  float sh[256];\n"
-      ++ reduceText 256 .ser "sumx" x ++ "\n" ++
-"  float mean = (sumx / float(n));
-" ++ reduceText 256 .ser "sumd" (mul (sub x (v "mean")) (sub x (v "mean"))) ++ "\n" ++
-"  float variance = (sumd / float(n));
+      ++ reduceText 256 .ser "sumx" x ++ "\n" ++ "  float mean = (sumx / float(n));
+" ++ reduceText 256 .ser "sumd" (mul (sub x (v "mean")) (sub x (v "mean"))) ++ "\n" ++ "  float variance = (sumd / float(n));
   float scale = (1.0f / sqrt((variance + eps)));
   for (uint j = 0u; j < n; ++j) {
     float x = s0[gidx(10u, j, ne0, ne1, start, i3)];

@@ -136,8 +136,7 @@ def ropeNeoxF32 : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   [ ("rope_neox_f32", ropeNeoxF32) ]
 
-def expectedRopeNeox : String :=
-"struct Slot {
+def expectedRopeNeox : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

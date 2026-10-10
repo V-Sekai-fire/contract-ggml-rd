@@ -80,8 +80,7 @@ def convDwF32 : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   [ ("conv_2d_dw_f32", convDwF32) ]
 
-example : (LeanSlang.emit convDwF32).endsWith
-"  uint i0;
+example : (LeanSlang.emit convDwF32).endsWith "  uint i0;
   uint i1;
   uint i2;
   uint i3;
