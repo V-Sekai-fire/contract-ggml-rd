@@ -16,4 +16,4 @@ It emits the kernels from Lean, checks them against the committed `slang/` and c
 
 ## Licence
 
-The repository does not state a licence of its own; `lean/CITATION.cff` names MIT for the Lean tree.
+MIT. See [LICENSE](LICENSE).
