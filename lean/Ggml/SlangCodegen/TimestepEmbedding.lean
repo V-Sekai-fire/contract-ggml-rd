@@ -66,8 +66,7 @@ def timestepEmbeddingF32 : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   [ ("timestep_embedding_f32", timestepEmbeddingF32) ]
 
-def expected : String :=
-"struct Slot {
+def expected : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

@@ -81,8 +81,7 @@ def padF32 : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   [ ("pad_f32", padF32) ]
 
-def expected : String :=
-"struct Slot {
+def expected : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

@@ -61,8 +61,7 @@ def kernels : List (String × SlangShaderModule) :=
 
 example : LeanSlang.emit sqrtF32 = sibling "" "dst[d] = sqrt(x);" := by native_decide
 
-example : LeanSlang.emit geluQuickF32 = sibling
-"float gelu_quick(float x) {
+example : LeanSlang.emit geluQuickF32 = sibling "float gelu_quick(float x) {
   return (x * (1.0f / (1.0f + exp(((-1.702f) * x)))));
 }
 

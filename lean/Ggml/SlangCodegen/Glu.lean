@@ -74,8 +74,7 @@ def kernels : List (String × SlangShaderModule) :=
 /-- The whole kernel after the shared helpers (`Unary.expectedSilu`'s
     prologue up to `off4`, then erf and gelu_erf as `gelu_erf_f32` has
     them): the entry is pinned in full. -/
-def expectedEntry : String :=
-"[shader(\"compute\")] [numthreads(256, 1, 1)]
+def expectedEntry : String := "[shader(\"compute\")] [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint e = ((((gid.y * pw(54u)) + gid.x) * 256u) + lid.x);
   if ((e >= pw(53u))) {

@@ -85,8 +85,7 @@ def ctlAddF32RoSources : SlangShaderModule :=
 def controls : List (String × SlangShaderModule) :=
   [ ("ctl_add_f32_rosrc", ctlAddF32RoSources) ]
 
-def expectedAdd : String :=
-"struct Slot {
+def expectedAdd : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

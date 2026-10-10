@@ -39,8 +39,7 @@ def arangeF32 : SlangShaderModule :=
 def kernels : List (String × SlangShaderModule) :=
   [ ("arange_f32", arangeF32) ]
 
-def expected : String :=
-"struct Slot {
+def expected : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

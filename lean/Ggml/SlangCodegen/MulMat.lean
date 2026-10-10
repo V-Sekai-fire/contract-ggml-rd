@@ -91,27 +91,23 @@ def fnLdb (b : Ty) : SlangFunctionDecl := fnLoad "ldb" "s1" b
 def lda (e : SlangExpr) : SlangExpr := .call "lda" [e]
 def ldb (e : SlangExpr) : SlangExpr := .call "ldb" [e]
 
-example : LeanSlang.emitFunction (fnLda .f32) =
-"float lda(uint e) {
+example : LeanSlang.emitFunction (fnLda .f32) = "float lda(uint e) {
   return s0[e];
 }" := by native_decide
 
-example : LeanSlang.emitFunction (fnLda .f16) =
-"float lda(uint e) {
+example : LeanSlang.emitFunction (fnLda .f16) = "float lda(uint e) {
   uint w = s0[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
   return f16tof32(h);
 }" := by native_decide
 
-example : LeanSlang.emitFunction (fnLda .bf16) =
-"float lda(uint e) {
+example : LeanSlang.emitFunction (fnLda .bf16) = "float lda(uint e) {
   uint w = s0[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
   return asfloat((h << 16u));
 }" := by native_decide
 
-example : LeanSlang.emitFunction (fnLdb .f16) =
-"float ldb(uint e) {
+example : LeanSlang.emitFunction (fnLdb .f16) = "float ldb(uint e) {
   uint w = s1[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
   return f16tof32(h);

@@ -62,8 +62,7 @@ def kernels : List (String × SlangShaderModule) :=
 example : emitExpr negInf = "asfloat(0xFF800000u)" := by native_decide
 
 /-- The head of both reductions and the whole map, in the parallel kernel. -/
-example : ((LeanSlang.emit softMaxF32).splitOn
-"  float scale = pf(37u);
+example : ((LeanSlang.emit softMaxF32).splitOn "  float scale = pf(37u);
   float acc_mx = asfloat(0xFF800000u);
   uint i_mx = t;
   while ((i_mx < n)) {
@@ -77,8 +76,7 @@ example : ((LeanSlang.emit softMaxF32).splitOn
     sh[t] = max(sh[t], sh[(t + 128u)]);
   }").length = 2 := by native_decide
 
-example : ((LeanSlang.emit softMaxF32).splitOn
-"  float mx = sh[0u];
+example : ((LeanSlang.emit softMaxF32).splitOn "  float mx = sh[0u];
   GroupMemoryBarrierWithGroupSync();
   float acc_sume = 0.0f;
   uint i_sume = t;
@@ -88,8 +86,7 @@ example : ((LeanSlang.emit softMaxF32).splitOn
     i_sume = (i_sume + 256u);
   }").length = 2 := by native_decide
 
-example : (LeanSlang.emit softMaxF32).endsWith
-"  float sume = sh[0u];
+example : (LeanSlang.emit softMaxF32).endsWith "  float sume = sh[0u];
   GroupMemoryBarrierWithGroupSync();
   float inv = (1.0f / sume);
   uint j = t;
@@ -100,8 +97,7 @@ example : (LeanSlang.emit softMaxF32).endsWith
   }
 }" := by native_decide
 
-example : (LeanSlang.emit softMaxF32Serial).endsWith
-"  float sume = sh[0u];
+example : (LeanSlang.emit softMaxF32Serial).endsWith "  float sume = sh[0u];
   float inv = (1.0f / sume);
   for (uint j = 0u; j < n; ++j) {
     float x = s0[(xb + (j * xs))];

@@ -39,8 +39,7 @@ def kernels : List (String × SlangShaderModule) :=
   , ("get_rows_f16", getRowsF16)
   , ("get_rows_bf16", getRowsBf16) ]
 
-def valB32Text : String :=
-"uint val(uint i0, uint i1, uint i2, uint i3) {
+def valB32Text : String := "uint val(uint i0, uint i1, uint i2, uint i3) {
   uint r = s1[off4(19u, i1, i2, i3, 0u)];
   return s0[off4(10u, i0, r, i2, i3)];
 }"

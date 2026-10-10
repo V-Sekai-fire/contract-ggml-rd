@@ -89,8 +89,7 @@ def kernels : List (String × SlangShaderModule) :=
 
 /-! ## Pins -/
 
-def expectedNorm : String :=
-"struct Slot {
+def expectedNorm : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -243,8 +242,7 @@ example : LeanSlang.emit normF32 = expectedNorm := by native_decide
 /-- Every pinned piece of the parallel kernels and their Serial siblings
     comes from `Rows` (whose reductions are pinned there); the siblings
     differ from their kernels in exactly the ways `Rows` states. -/
-example : LeanSlang.emit normF32Serial =
-"struct Slot {
+example : LeanSlang.emit normF32Serial = "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -373,8 +371,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
 }" := by native_decide
 
 /-- RMS_NORM's tail after its one reduction: the mean square, the scale, x · scale. -/
-example : (LeanSlang.emit rmsNormF32).endsWith
-"  float sumsq = sh[0u];
+example : (LeanSlang.emit rmsNormF32).endsWith "  float sumsq = sh[0u];
   GroupMemoryBarrierWithGroupSync();
   float ms = (sumsq / float(n));
   float scale = (1.0f / sqrt((ms + eps)));
@@ -395,16 +392,14 @@ example : ((LeanSlang.emit rmsNormF32).splitOn "GroupMemoryBarrierWithGroupSync(
   native_decide
 
 /-- MEAN: one reduction, then thread 0 writes the row's one element. -/
-example : (LeanSlang.emit meanF32).endsWith
-"  float sumx = sh[0u];
+example : (LeanSlang.emit meanF32).endsWith "  float sumx = sh[0u];
   GroupMemoryBarrierWithGroupSync();
   if ((t == 0u)) {
     dst[yb] = (sumx / float(n));
   }
 }" := by native_decide
 
-example : (LeanSlang.emit meanF32Serial).endsWith
-"  float sumx = sh[0u];
+example : (LeanSlang.emit meanF32Serial).endsWith "  float sumx = sh[0u];
   dst[yb] = (sumx / float(n));
 }" := by native_decide
 

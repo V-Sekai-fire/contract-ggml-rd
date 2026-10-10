@@ -101,22 +101,19 @@ example : LeanSlang.emit logF32 = sibling "" "dst[d] = log(x);" := by native_dec
 example : LeanSlang.emit sinF32 = sibling "" "dst[d] = sin(x);" := by native_decide
 example : LeanSlang.emit cosF32 = sibling "" "dst[d] = cos(x);" := by native_decide
 
-example : LeanSlang.emit sgnF32 = sibling
-"float sgn(float x) {
+example : LeanSlang.emit sgnF32 = sibling "float sgn(float x) {
   return ((x > 0.0f) ? 1.0f : ((x < 0.0f) ? (-1.0f) : 0.0f));
 }
 
 " "dst[d] = sgn(x);" := by native_decide
 
-example : LeanSlang.emit stepF32 = sibling
-"float step_ggml(float x) {
+example : LeanSlang.emit stepF32 = sibling "float step_ggml(float x) {
   return ((x > 0.0f) ? 1.0f : 0.0f);
 }
 
 " "dst[d] = step_ggml(x);" := by native_decide
 
-example : LeanSlang.emit tanhF32 = sibling
-"float tanh_clamped(float x) {
+example : LeanSlang.emit tanhF32 = sibling "float tanh_clamped(float x) {
   float y = ((x > 10.0f) ? 10.0f : ((x < (-10.0f)) ? (-10.0f) : x));
   return tanh(y);
 }

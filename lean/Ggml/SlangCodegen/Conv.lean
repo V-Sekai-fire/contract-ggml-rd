@@ -279,8 +279,7 @@ def kernels : List (String × SlangShaderModule) :=
 Every kernel's whole text is pinned: a change to any helper or body shows
 up here, next to the emission it moves. -/
 
-def expectedIm2colF32 : String :=
-"struct Slot {
+def expectedIm2colF32 : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -357,8 +356,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   dst[off4(1u, i0, i1, i2, i3)] = im2col_at(i0, i1, i2, i3);
 }"
 
-def expectedIm2colF16 : String :=
-"struct Slot {
+def expectedIm2colF16 : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -484,8 +482,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   dst[wd] = (lo | (hi << 16u));
 }"
 
-def expectedConv3dF32 : String :=
-"struct Slot {
+def expectedConv3dF32 : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -591,8 +588,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   dst[off4(1u, ox, oy, oz, ocn)] = acc;
 }"
 
-def expectedConv3dF16 : String :=
-"struct Slot {
+def expectedConv3dF16 : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;

@@ -214,8 +214,7 @@ def kernels : List (String × SlangShaderModule) :=
 
 /-- silu_f32 in full; every other K1 kernel is this text with the helper
     and the one result line changed (pinned below). -/
-def expectedSilu : String :=
-"struct Slot {
+def expectedSilu : String := "struct Slot {
   uint base;
   uint pad0;
   uint pad1;
@@ -291,23 +290,20 @@ def siluCall : String := "dst[d] = silu(x);"
 def sibling (helpers res : String) : String :=
   (expectedSilu.replace siluFn helpers).replace siluCall res
 
-example : LeanSlang.emit sigmoidF32 = sibling
-"float sigmoid(float x) {
+example : LeanSlang.emit sigmoidF32 = sibling "float sigmoid(float x) {
   return (1.0f / (1.0f + exp((-x))));
 }
 
 " "dst[d] = sigmoid(x);" := by native_decide
 
-example : LeanSlang.emit geluF32 = sibling
-"float gelu_tanh(float x) {
+example : LeanSlang.emit geluF32 = sibling "float gelu_tanh(float x) {
   float y = ((0.7978846f * x) * (1.0f + ((0.044715f * x) * x)));
   return ((0.5f * x) * (1.0f + tanh(clamp(y, (-10.0f), 10.0f))));
 }
 
 " "dst[d] = gelu_tanh(x);" := by native_decide
 
-example : LeanSlang.emit geluErfF32 = sibling
-"float erf_as(float x) {
+example : LeanSlang.emit geluErfF32 = sibling "float erf_as(float x) {
   float z = abs(x);
   float t = (1.0f / (1.0f + (0.3275911f * z)));
   float q = (t * (0.2548296f + (t * ((-0.28449672f) + (t * (1.4214138f + (t * ((-1.4531521f) + (t * 1.0614054f)))))))));
@@ -323,8 +319,7 @@ float gelu_erf(float x) {
 
 example : LeanSlang.emit negF32 = sibling "" "dst[d] = (-x);" := by native_decide
 
-example : LeanSlang.emit scaleF32 = sibling
-"float pf(uint k) {
+example : LeanSlang.emit scaleF32 = sibling "float pf(uint k) {
   return asfloat(pw(k));
 }
 
@@ -333,15 +328,13 @@ example : LeanSlang.emit scaleF32 = sibling
 example : LeanSlang.emit diagMaskInfF32 = sibling ""
   "dst[d] = ((i0 > (pw(37u) + i1)) ? asfloat(4286578688u) : x);" := by native_decide
 
-example : LeanSlang.emit reluF32 = sibling
-"float relu(float x) {
+example : LeanSlang.emit reluF32 = sibling "float relu(float x) {
   return ((x > 0.0f) ? x : 0.0f);
 }
 
 " "dst[d] = relu(x);" := by native_decide
 
-example : LeanSlang.emit leakyReluF32 = sibling
-"float pf(uint k) {
+example : LeanSlang.emit leakyReluF32 = sibling "float pf(uint k) {
   return asfloat(pw(k));
 }
 
@@ -351,8 +344,7 @@ float leaky_relu(float x, float ns) {
 
 " "dst[d] = leaky_relu(x, pf(37u));" := by native_decide
 
-example : LeanSlang.emit clampF32 = sibling
-"float pf(uint k) {
+example : LeanSlang.emit clampF32 = sibling "float pf(uint k) {
   return asfloat(pw(k));
 }
 

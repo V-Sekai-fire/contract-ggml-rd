@@ -49,8 +49,7 @@ def kernels : List (String × SlangShaderModule) :=
   [ ("concat_b32", concatB32)
   , ("concat_b16", concatB16) ]
 
-def valB32Text : String :=
-"uint val(uint i0, uint i1, uint i2, uint i3) {
+def valB32Text : String := "uint val(uint i0, uint i1, uint i2, uint i3) {
   uint a0 = pw(10u);
   uint a1 = pw(11u);
   uint a2 = pw(12u);

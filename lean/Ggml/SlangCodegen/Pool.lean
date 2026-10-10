@@ -90,8 +90,7 @@ def kernels : List (String × SlangShaderModule) :=
 
 /-! ## Pins -/
 
-example : (LeanSlang.emit poolMaxF32).endsWith
-"  uint i0;
+example : (LeanSlang.emit poolMaxF32).endsWith "  uint i0;
   uint i1;
   uint i2;
   uint i3;
@@ -115,8 +114,7 @@ example : (LeanSlang.emit poolMaxF32).endsWith
   dst[d] = res;
 }" := by native_decide
 
-example : (LeanSlang.emit poolAvgF32).endsWith
-"  float res = 0.0f;
+example : (LeanSlang.emit poolAvgF32).endsWith "  float res = 0.0f;
   uint count = 0u;
   for (uint ki = 0u; ki < k; ++ki) {
     uint q = (b + ki);
