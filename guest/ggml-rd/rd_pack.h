@@ -62,11 +62,6 @@ int kernel_index(const char *name); // -1 if no such kernel
 // for it (rd_cpu.cpp: the siblings are the ones with a cpp emit).
 void set_serial_kernels(bool on);
 bool serial_kernels();
-// The device's workgroup memory, in bytes (unlimited unless a device sets it;
-// WebGPU's default is 16384). A packer whose kernel needs more picks a sibling
-// that needs none.
-void set_workgroup_limit(uint32_t bytes);
-uint32_t workgroup_limit();
 const KernelDesc &kernel_desc(int k);
 
 // A 1-D launch of `threads` threads of the kernel's thread-group size,

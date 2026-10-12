@@ -23,6 +23,10 @@ set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+# The module ships to the public web: no build machine paths in it. __FILE__
+# in asserts and the debug info name sources relative to the checkouts' parent.
+get_filename_component(CHECKOUTS "${ROOT}/.." ABSOLUTE)
+add_compile_options("-ffile-prefix-map=${CHECKOUTS}/=" "-ffile-prefix-map=$ENV{HOME}/=")
 add_subdirectory(${GGML_ROOT} ggml EXCLUDE_FROM_ALL)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

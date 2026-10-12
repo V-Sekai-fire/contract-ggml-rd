@@ -108,7 +108,3 @@ conv2d_f16
 conv_transpose_2d_f32
 conv_transpose_2d_f16
 cpy_f32_i32
-flash_attn_ext_f32_d64_t8
-flash_attn_ext_f32_d128_t8
-flash_attn_ext_f16_d64_t8
-flash_attn_ext_f16_d128_t8

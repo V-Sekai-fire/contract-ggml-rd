@@ -9,8 +9,9 @@
 //                    F32 (both accumulate in f32); a softcap is computed, and
 //                    max_bias is accepted because without a mask ALiBi has
 //                    nothing to scale (ggml-cpu multiplies the mask by it).
-//   pack(p)       -- the tiled kernel (16 queries of one head per group of
-//                    128 threads, grid (ceil(N / 16), Hq, B)), or under
+//   pack(p)       -- the tiled kernel (8 queries of one head per group of
+//                    64 threads, grid (ceil(N / 8), Hq, B); one kernel on
+//                    every device, it fits WebGPU's 16384 bytes), or under
 //                    GGML_RD_SERIAL=1 its _serial sibling (one thread per
 //                    query row, a 1-D grid): the host L2 harness runs the
 //                    sibling, which has a cpp emit, and on the GPU it is the
@@ -30,8 +31,7 @@ namespace {
 
 using namespace ggml_rd;
 
-constexpr uint32_t kRows = 16; // queries per work group of the tiled kernel
-constexpr uint32_t kRowsSmall = 8; // and of its small-tile variant (8 keys per tile too)
+constexpr uint32_t kRows = 8; // queries per work group of the tiled kernel (lean FlashAttn.rows)
 constexpr uint32_t W_RK2 = 55, W_RK3 = 56, W_RV2 = 57, W_RV3 = 58, W_SCALE = 59, W_SOFTCAP = 60;
 
 // op_params word i (ggml-impl.h's accessors are internal to ggml).
@@ -87,7 +87,7 @@ bool supports_fa(const ggml_tensor *op) {
 		return false;
 	}
 	// The tiled grid: query blocks, heads and batches each <= 65535 groups.
-	const int64_t qblocks = (q->ne[1] + kRowsSmall - 1) / kRowsSmall; // the small tile's, the larger count
+	const int64_t qblocks = (q->ne[1] + kRows - 1) / kRows;
 	if (qblocks > kMaxGroupsPerDim || q->ne[2] > kMaxGroupsPerDim || q->ne[3] > kMaxGroupsPerDim) {
 		return false;
 	}
@@ -99,17 +99,9 @@ bool pack_fa(Pack &p) {
 	const ggml_tensor *q = op->src[0];
 	const ggml_tensor *k = op->src[1];
 	const ggml_tensor *v = op->src[2];
-	// Group memory of a tile of `rows` queries and `keys` keys: Q (rows x d+1),
-	// K (keys x d+1), V (keys x d) and S (rows x keys+1) floats
-	// (lean/Ggml/SlangCodegen/FlashAttn.lean tiledSharedBytes). The big tile
-	// where it fits, else the small one (_t8, WebGPU's 16384 bytes), else serial.
-	const uint64_t d = uint64_t(q->ne[0]);
-	auto tile_bytes = [d](uint64_t rows, uint64_t keys) { return 4 * (rows * (d + 1) + keys * (d + 1) + keys * d + rows * (keys + 1)); };
-	const bool serial = serial_kernels() || tile_bytes(kRowsSmall, kRowsSmall) > workgroup_limit();
-	const bool small = !serial && tile_bytes(kRows, 32) > workgroup_limit();
-	const uint32_t rows = small ? kRowsSmall : kRows;
+	const bool serial = serial_kernels();
 	std::string name = std::string("flash_attn_ext_") + (k->type == GGML_TYPE_F16 ? "f16" : "f32") + "_d" +
-			std::to_string(q->ne[0]) + (serial ? "_serial" : small ? "_t8" : "");
+			std::to_string(q->ne[0]) + (serial ? "_serial" : "");
 	p.kernel = kernel_index(name.c_str());
 	if (p.kernel < 0) {
 		return false;
@@ -128,7 +120,7 @@ bool pack_fa(Pack &p) {
 	if (serial) {
 		return grid_1d(p, uint64_t(q->ne[1]) * uint64_t(q->ne[2]) * uint64_t(q->ne[3]));
 	}
-	p.groups[0] = uint32_t((q->ne[1] + rows - 1) / rows);
+	p.groups[0] = uint32_t((q->ne[1] + kRows - 1) / kRows);
 	p.groups[1] = uint32_t(q->ne[2]);
 	p.groups[2] = uint32_t(q->ne[3]);
 	return true;

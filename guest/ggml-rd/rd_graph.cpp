@@ -145,11 +145,6 @@ ggml_status graph_compute(ggml_cgraph *g) {
 	// The fallback runs every kernel's cpp emit, and the kernels with group
 	// memory have none: their packers must pick the serial siblings.
 	set_serial_kernels(cpu);
-#ifdef GGML_RD_WEB
-	if (!cpu) {
-		set_workgroup_limit(c.dev->workgroup_storage_max()); // GGML_RD_WG_LIMIT overrides it (rd_pack.cpp)
-	}
-#endif
 
 	const bool barrier_all = env_int("GGML_RD_BARRIER_ALL") != 0;
 	const int fault = env_int("GGML_RD_FAULT");

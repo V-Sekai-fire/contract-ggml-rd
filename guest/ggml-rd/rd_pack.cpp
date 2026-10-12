@@ -58,20 +58,6 @@ bool serial_kernels() {
 	return e != nullptr && std::atoi(e) != 0;
 }
 
-static uint32_t g_workgroup_limit = 0xFFFFFFFFu;
-
-void set_workgroup_limit(uint32_t bytes) {
-	g_workgroup_limit = bytes;
-}
-
-uint32_t workgroup_limit() {
-	// GGML_RD_WG_LIMIT: a gate's stand-in for a device's limit (the host
-	// harness exports the small-tile kernels for WebGPU under it).
-	const char *e = std::getenv("GGML_RD_WG_LIMIT");
-	const long long v = e != nullptr ? std::atoll(e) : 0;
-	return v > 0 ? uint32_t(v) : g_workgroup_limit;
-}
-
 int kernel_index(const char *name) {
 	for (uint32_t i = 0; i < kKernelCount; ++i) {
 		if (std::strcmp(kKernels[i].name, name) == 0) {

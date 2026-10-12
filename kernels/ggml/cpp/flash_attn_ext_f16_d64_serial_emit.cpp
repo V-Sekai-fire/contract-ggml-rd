@@ -4510,7 +4510,7 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
 #line 68
     FixedArray<float, 64>  qv_0;
     FixedArray<float, 64>  acc_0;
-    FixedArray<float, 32>  sc_0;
+    FixedArray<float, 8>  sc_0;
 
 #line 70
     uint32_t c_0 = 0U;
@@ -4542,7 +4542,7 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
     uint32_t _S32 = pw_0(0U, &kernelContext_5);
 
 #line 77
-    uint32_t _S33 = (_S20 + 31U) / 32U;
+    uint32_t _S33 = (_S20 + 7U) / 8U;
 
 #line 77
     float m_0 = (U32_asfloat((4286578688U | (_S32 & 0U))));
@@ -4567,7 +4567,7 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
         }
 
 #line 79
-        uint32_t _S34 = tt_0 * 32U;
+        uint32_t _S34 = tt_0 * 8U;
 
 #line 79
         uint32_t j_0 = 0U;
@@ -4575,7 +4575,7 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
         {
 
 #line 80
-            if(j_0 < 32U)
+            if(j_0 < 8U)
             {
             }
             else
@@ -4683,7 +4683,7 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
         {
 
 #line 96
-            if(j_1 < 32U)
+            if(j_1 < 8U)
             {
             }
             else
@@ -4748,7 +4748,7 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
         {
 
 #line 104
-            if(j_3 < 32U)
+            if(j_3 < 8U)
             {
             }
             else

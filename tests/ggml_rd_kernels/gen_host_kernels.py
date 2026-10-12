@@ -53,8 +53,6 @@ def main():
         elif has_cpp.get(k + '_serial', False):
             if one_thread(k + '_serial'):
                 runs[k] = k + '_serial'
-        elif k.endswith('_t8') and has_cpp.get(k[:-3] + '_serial', False):
-            pass  # a small-tile variant: no runner; its packer picks <base>_serial under GGML_RD_SERIAL
         else:
             sys.exit('error: %s has no cpp emit and no sibling with one' % k)
     w = []

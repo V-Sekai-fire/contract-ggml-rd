@@ -16,7 +16,6 @@ EM_JS(char *, js_take_error, (), {
 	return stringToNewUTF8(e);
 });
 EM_JS(char *, js_name, (), { return stringToNewUTF8(RD.name()); });
-EM_JS(double, js_wg_max, (), { return RD.device.limits.maxComputeWorkgroupStorageSize; });
 EM_JS(int, js_shader, (const uint8_t *src, size_t bytes), {
 	const code = UTF8ToString(src, bytes);
 	return RD.put(RD.device.createShaderModule({ code }));
@@ -195,10 +194,6 @@ std::string Device::device_name() {
 	std::string s(n);
 	std::free(n);
 	return s;
-}
-
-uint32_t Device::workgroup_storage_max() {
-	return uint32_t(js_wg_max());
 }
 
 bool Device::list_begin() {
