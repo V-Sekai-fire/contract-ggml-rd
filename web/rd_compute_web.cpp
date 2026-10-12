@@ -23,6 +23,10 @@ EM_JS(int, js_shader, (const uint8_t *src, size_t bytes), {
 EM_ASYNC_JS(int, js_pipeline, (int shader), { return await RD.pipeline(shader); });
 EM_JS(int, js_storage, (double bytes), {
 	const size = Math.max(4, Math.ceil(bytes / 4) * 4);
+	if (size > RD.device.limits.maxBufferSize) {
+		RD.errors.push(`storage buffer of ${size} bytes is over maxBufferSize ${RD.device.limits.maxBufferSize}`);
+		return 0;
+	}
 	return RD.put(RD.device.createBuffer({ size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST }));
 });
 EM_JS(int, js_uniform, (double bytes, const void *data), {
@@ -48,15 +52,19 @@ EM_JS(int, js_clear, (int buf, double off, double bytes), {
 	RD.device.queue.submit([enc.finish()]);
 	return 1;
 });
-EM_JS(int, js_bind_group, (int set, const int *binding, const int *rid, int n), {
+EM_JS(int, js_bind_group, (int set, const int *binding, const int *rid, const double *off, const double *size, int n), {
 	const entries = [];
 	for (let i = 0; i < n; i++) {
 		const r = HEAP32[(rid >> 2) + i];
-		entries.push({ binding: HEAP32[(binding >> 2) + i], resource: { buffer: r ? RD.get(r) : RD.dummy } });
+		const o = HEAPF64[(off >> 3) + i], z = HEAPF64[(size >> 3) + i];
+		const bi = HEAP32[(binding >> 2) + i];
+		const resource = r ? { buffer: RD.get(r), offset: o } : { buffer: RD.dummies[bi] };
+		if (r && z > 0) resource.size = z;
+		entries.push({ binding: bi, resource });
 	}
 	if (set === 0) {
 		// The layout has all five bindings; an unbound source gets the dummy.
-		for (let b = 0; b < 5; b++) if (!entries.some((e) => e.binding === b)) entries.push({ binding: b, resource: { buffer: RD.dummy } });
+		for (let b = 0; b < 5; b++) if (!entries.some((e) => e.binding === b)) entries.push({ binding: b, resource: { buffer: RD.dummies[b] } });
 	}
 	return RD.put(RD.device.createBindGroup({ layout: RD.layouts[set], entries }));
 });
@@ -68,6 +76,11 @@ EM_JS(void, js_list_begin, (), {
 EM_JS(void, js_bind_pipeline, (int p), { RD.pass.setPipeline(RD.get(p)); });
 EM_JS(void, js_bind_set, (int s, int set), { RD.pass.setBindGroup(set, RD.get(s)); });
 EM_JS(void, js_dispatch, (int x, int y, int z), { RD.pass.dispatchWorkgroups(x, y, z); });
+EM_JS(void, js_list_copy, (int src, double so, int dst, double dof, double bytes), {
+	RD.pass.end();
+	RD.encoder.copyBufferToBuffer(RD.get(src), so, RD.get(dst), dof, bytes);
+	RD.pass = RD.encoder.beginComputePass();
+});
 EM_JS(void, js_list_end, (), {
 	RD.pass.end();
 	RD.pass = null;
@@ -128,7 +141,11 @@ void Device::close() {
 }
 
 ::RID Device::storage_buffer_empty(size_t bytes, bool) {
-	return ::RID{ js_storage(double(bytes)) }; // WebGPU zero-fills new buffers
+	::RID r{ js_storage(double(bytes)) }; // WebGPU zero-fills new buffers
+	if (r.index == 0) {
+		fail("storage_buffer");
+	}
+	return r;
 }
 
 ::RID Device::uniform_buffer(size_t bytes, const void *data) {
@@ -154,11 +171,14 @@ bool Device::buffer_clear(::RID buffer, size_t offset, size_t bytes) {
 
 ::RID Device::uniform_set(::RID, const std::vector<Binding> &bindings, uint32_t set) {
 	std::vector<int> b, r;
+	std::vector<double> o, z;
 	for (const Binding &x : bindings) {
 		b.push_back(int(x.binding));
 		r.push_back(int(x.rid.index));
+		o.push_back(double(x.offset));
+		z.push_back(double(x.size));
 	}
-	return ::RID{ js_bind_group(int(set), b.data(), r.data(), int(b.size())) };
+	return ::RID{ js_bind_group(int(set), b.data(), r.data(), o.data(), z.data(), int(b.size())) };
 }
 
 void Device::free_rid(::RID rid) {
@@ -191,6 +211,10 @@ void Device::bind_uniform_set(::RID uniform_set, uint32_t set) {
 
 void Device::dispatch(uint32_t x, uint32_t y, uint32_t z) {
 	js_dispatch(int(x), int(y), int(z));
+}
+
+void Device::list_copy(::RID src, uint64_t src_offset, ::RID dst, uint64_t dst_offset, uint64_t bytes) {
+	js_list_copy(int(src.index), double(src_offset), int(dst.index), double(dst_offset), double(bytes));
 }
 
 void Device::list_end() {

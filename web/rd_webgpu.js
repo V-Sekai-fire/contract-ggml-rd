@@ -7,7 +7,7 @@ var RD = {
   device: null,
   layouts: null,
   pipelineLayout: null,
-  dummy: null,
+  dummies: null,
   encoder: null,
   pass: null,
   pending: [],
@@ -46,7 +46,8 @@ var RD = {
       RD.device.createBindGroupLayout({ entries: [{ binding: 0, visibility: S, buffer: { type: 'uniform' } }] }),
     ];
     RD.pipelineLayout = RD.device.createPipelineLayout({ bindGroupLayouts: RD.layouts });
-    RD.dummy = RD.device.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE });
+    // One per binding: two unused writable slots on one buffer would alias.
+    RD.dummies = [0, 1, 2, 3, 4].map(() => RD.device.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE }));
     return RD.limitMB();
   },
   limitMB() {

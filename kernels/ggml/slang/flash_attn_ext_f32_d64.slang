@@ -5,10 +5,10 @@ struct Slot {
   uint pad2;
 };
 
-groupshared float Qs[16][65];
-groupshared float Ks[32][65];
-groupshared float Vs[32][64];
-groupshared float Ss[16][33];
+groupshared float Qs[8][65];
+groupshared float Ks[8][65];
+groupshared float Vs[8][64];
+groupshared float Ss[8][9];
 
 [[vk::binding(0, 0)]]
 StructuredBuffer<uint> params;
@@ -35,12 +35,12 @@ uint off4(uint w, uint i0, uint i1, uint i2, uint i3) {
   return ((((pw((w + 8u)) + (i0 * pw((w + 4u)))) + (i1 * pw((w + 5u)))) + (i2 * pw((w + 6u)))) + (i3 * pw((w + 7u))));
 }
 
-[shader("compute")] [numthreads(128, 1, 1)]
+[shader("compute")] [numthreads(64, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint t = lid.x;
   uint r = (t / 8u);
   uint l = (t % 8u);
-  uint iq = ((gid.x * 16u) + r);
+  uint iq = ((gid.x * 8u) + r);
   uint h = gid.y;
   uint b = gid.z;
   uint lk = pw(20u);
@@ -64,7 +64,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     Qs[r][c] = x;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   float acc0 = 0.000000;
   float acc1 = 0.000000;
@@ -74,12 +74,12 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   float acc5 = 0.000000;
   float acc6 = 0.000000;
   float acc7 = 0.000000;
-  uint nt = ((lk + 31u) / 32u);
+  uint nt = ((lk + 7u) / 8u);
   for (uint tt = 0u; tt < nt; ++tt) {
-    uint k0 = (tt * 32u);
+    uint k0 = (tt * 8u);
     GroupMemoryBarrierWithGroupSync();
-    for (uint i = 0u; i < 16u; ++i) {
-      uint f = (t + (i * 128u));
+    for (uint i = 0u; i < 8u; ++i) {
+      uint f = (t + (i * 64u));
       uint j = (f / 64u);
       uint c = (f % 64u);
       uint key = (k0 + j);
@@ -94,51 +94,21 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     GroupMemoryBarrierWithGroupSync();
     float d0 = 0.000000;
-    float d1 = 0.000000;
-    float d2 = 0.000000;
-    float d3 = 0.000000;
     for (uint c = 0u; c < 64u; ++c) {
       float qc = Qs[r][c];
       d0 = (d0 + (qc * Ks[l][c]));
-      d1 = (d1 + (qc * Ks[(l + 8u)][c]));
-      d2 = (d2 + (qc * Ks[(l + 16u)][c]));
-      d3 = (d3 + (qc * Ks[(l + 24u)][c]));
     }
     d0 = (d0 * scale);
     if ((cap != 0.000000)) {
       d0 = (cap * tanh(d0));
     }
     if (((k0 + l) >= lk)) {
-      d0 = asfloat(4286578688u);
+      d0 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][l] = d0;
-    d1 = (d1 * scale);
-    if ((cap != 0.000000)) {
-      d1 = (cap * tanh(d1));
-    }
-    if (((k0 + (l + 8u)) >= lk)) {
-      d1 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 8u)] = d1;
-    d2 = (d2 * scale);
-    if ((cap != 0.000000)) {
-      d2 = (cap * tanh(d2));
-    }
-    if (((k0 + (l + 16u)) >= lk)) {
-      d2 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 16u)] = d2;
-    d3 = (d3 * scale);
-    if ((cap != 0.000000)) {
-      d3 = (cap * tanh(d3));
-    }
-    if (((k0 + (l + 24u)) >= lk)) {
-      d3 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 24u)] = d3;
     GroupMemoryBarrierWithGroupSync();
     float mt = m;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       mt = max(mt, Ss[r][j]);
     }
     float corr = exp((m - mt));
@@ -151,7 +121,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     acc6 = (acc6 * corr);
     acc7 = (acc7 * corr);
     float ps = 0.000000;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       float p = exp((Ss[r][j] - mt));
       ps = (ps + p);
       acc0 = (acc0 + (p * Vs[j][l]));

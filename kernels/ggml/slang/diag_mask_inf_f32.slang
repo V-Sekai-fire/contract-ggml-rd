@@ -52,5 +52,5 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint d = off4(1u, i0, i1, i2, i3);
   uint a = off4(10u, i0, i1, i2, i3);
   float x = s0[a];
-  dst[d] = ((i0 > (pw(37u) + i1)) ? asfloat(4286578688u) : x);
+  dst[d] = ((i0 > (pw(37u) + i1)) ? asfloat((4286578688u | (pw(0u) & 0u))) : x);
 }

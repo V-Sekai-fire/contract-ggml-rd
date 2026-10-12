@@ -35,6 +35,11 @@ struct State {
 	uint32_t params_slots = 0;
 	std::vector<::RID> slot_ubos, slot_sets;
 	std::map<std::array<int64_t, 5>, ::RID> set0;
+#ifdef GGML_RD_WEB
+	std::map<std::array<int64_t, 13>, ::RID> set0_ranged; // params, then (rid, offset, size) x 4
+	::RID scratch;
+	uint64_t scratch_bytes = 0;
+#endif
 	uint32_t created_since_coop = 0;
 };
 
@@ -187,7 +192,68 @@ void forget_sets_of(::RID buffer) {
 			++it;
 		}
 	}
+#ifdef GGML_RD_WEB
+	for (auto it = s.set0_ranged.begin(); it != s.set0_ranged.end();) {
+		const auto &k = it->first;
+		if (k[1] == buffer.index || k[4] == buffer.index || k[7] == buffer.index || k[10] == buffer.index) {
+			d.free_rid(it->second); // a WebGPU bind group outlives nothing it binds
+			it = s.set0_ranged.erase(it);
+		} else {
+			++it;
+		}
+	}
+#endif
 }
+
+#ifdef GGML_RD_WEB
+::RID tensor_set_ranged(::RID params, const RangeBinding slots[4]) {
+	State &s = S();
+	std::array<int64_t, 13> key{};
+	key[0] = params.index;
+	for (int k = 0; k < 4; ++k) {
+		key[1 + 3 * k] = slots[k].rid.index;
+		key[2 + 3 * k] = int64_t(slots[k].offset);
+		key[3 + 3 * k] = int64_t(slots[k].size);
+	}
+	auto it = s.set0_ranged.find(key);
+	if (it != s.set0_ranged.end()) {
+		return it->second;
+	}
+	rdc::Device &d = *ctx().dev;
+	const int SB = rdc::UNIFORM_TYPE_STORAGE_BUFFER;
+	const uint32_t at[4] = { B_SRC0, B_SRC1, B_SRC2, B_DST };
+	std::vector<rdc::Binding> b = { { B_PARAMS, SB, params } };
+	for (int k = 0; k < 4; ++k) {
+		b.push_back({ at[k], SB, slots[k].rid, slots[k].offset, slots[k].size });
+	}
+	::RID set = d.uniform_set(s.layout_shader, b, SET_TENSORS);
+	if (set.index == 0) {
+		set_error("set 0: " + d.error());
+		return ::RID();
+	}
+	s.set0_ranged.emplace(key, set);
+	++ctx().st.set0_created;
+	return set;
+}
+
+::RID scratch_buffer(uint64_t bytes) {
+	State &s = S();
+	if (s.scratch.index != 0 && s.scratch_bytes >= bytes) {
+		return s.scratch;
+	}
+	rdc::Device &d = *ctx().dev;
+	if (s.scratch.index != 0) {
+		forget_sets_of(s.scratch);
+		d.free_rid(s.scratch);
+	}
+	s.scratch = d.storage_buffer_empty(size_t(bytes), false);
+	s.scratch_bytes = s.scratch.index != 0 ? bytes : 0;
+	if (s.scratch.index == 0) {
+		set_error("scratch: " + d.error());
+	}
+	return s.scratch;
+}
+#endif
 
 void release_kernels() {
 	State &s = S();
@@ -211,6 +277,12 @@ void release_kernels() {
 	for (auto &kv : s.set0) {
 		drop(kv.second);
 	}
+#ifdef GGML_RD_WEB
+	for (auto &kv : s.set0_ranged) {
+		drop(kv.second);
+	}
+	drop(s.scratch);
+#endif
 	for (::RID &r : s.slot_sets) {
 		drop(r);
 	}

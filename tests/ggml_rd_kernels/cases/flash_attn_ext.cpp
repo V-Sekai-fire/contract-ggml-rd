@@ -160,4 +160,14 @@ L2_CASES(flash_attn_ext) {
 		f.then_add = true;
 		add(out, f);
 	}
+	{
+		Fa f = fa(128, F32, 12, 4096, 1024); // DiT-like: 4096 keys, 1024 queries, 12 heads
+		f.permute = true;
+		add(out, f);
+	}
+	{
+		Fa f = fa(128, F16, 8, 3192, 1); // TokenRig decode: Qwen3 16 query heads on 8 KV heads, full f16 cache
+		f.nr2 = 2;
+		add(out, f);
+	}
 }

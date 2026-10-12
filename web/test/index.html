@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ggml-rd WebGPU test</title>
+<style>body{font:13px ui-monospace,monospace;background:#111;color:#ddd;margin:16px}#v{font-size:18px}.ok{color:#8c8}.no{color:#e77}</style></head>
+<body>
+<div id="v">running…</div>
+<pre id="log"></pre>
+<script type="module">
+// web/test in a browser: the module runs in a Web Worker; the page only prints.
+// ?graphs=qwen+sconv picks nets (default: the test's own set).
+const graphs = new URLSearchParams(location.search).get('graphs') ?? '';
+const log = document.getElementById('log'), v = document.getElementById('v');
+if (!navigator.gpu) {
+  v.className = 'no';
+  v.textContent = 'This page needs WebGPU (Chrome or Edge 113+, Safari 26+). It runs no CPU fallback.';
+  window.__done = { pass: false, error: 'no WebGPU' };
+  throw new Error('no WebGPU');
+}
+// A private Hugging Face Space signs its page URL (?__sign=...); inside the
+// huggingface.co frame the cookie is third-party and dropped, so every request
+// the worker makes carries the signature instead.
+const sign = new URLSearchParams(location.search).get('__sign');
+const q = sign ? `?__sign=${encodeURIComponent(sign)}` : '';
+const w = new Worker('./worker.mjs' + q, { type: 'module' });
+const t0 = performance.now();
+let frames = 0;
+(function tick() { frames++; requestAnimationFrame(tick); })();
+w.onmessage = (e) => {
+  const m = e.data;
+  if (m.line !== undefined) log.textContent += m.line + '\n';
+  if (m.done) {
+    const s = (performance.now() - t0) / 1000;
+    v.className = m.pass ? 'ok' : 'no';
+    v.textContent = `${m.pass ? 'RESULT: PASS' : 'RESULT: FAIL'} (rc ${m.rc}) in ${s.toFixed(1)} s; page frames meanwhile ${frames}`;
+    window.__done = { pass: m.pass, rc: m.rc, seconds: s, frames, log: log.textContent };
+  }
+};
+w.onerror = (e) => { v.className = 'no'; v.textContent = 'worker error: ' + e.message; window.__done = { pass: false, error: e.message }; };
+w.postMessage({ graphs });
+</script>
+</body>
+</html>

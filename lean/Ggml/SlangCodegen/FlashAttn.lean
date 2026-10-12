@@ -24,14 +24,15 @@ test-backend-ops' NMSE 5e-4 covers the difference).
 
 ## Tiled kernel (`flash_attn_ext_<kv>_d<D>`, the GPU path)
 
-One work group = 16 queries of one head and batch, 128 threads as 16 rows
-× 8 lanes (`r = t / 8`, `l = t % 8`); grid `(ceil(N / 16), Hq, B)`.
-Groupshared: the Q tile `Qs[16][D+1]`, a K/V tile of 32 keys `Ks[32][D+1]`,
-`Vs[32][D]`, and the scores `Ss[16][33]` (43,264 bytes at D = 128; the pads
+One work group = 8 queries of one head and batch, 64 threads as 8 rows
+× 8 lanes (`r = t / 8`, `l = t % 8`); grid `(ceil(N / 8), Hq, B)`.
+Groupshared: the Q tile `Qs[8][D+1]`, a K/V tile of 8 keys `Ks[8][D+1]`,
+`Vs[8][D]`, and the scores `Ss[8][9]` (12,640 bytes at D = 128, under
+WebGPU's default 16,384, so every device runs this one kernel; the pads
 keep the lanes of a row and the rows of a warp on different banks). Per K/V
-tile: all 128 threads load it (coalesced), lane `l` of row `r` scores keys
-`l, l+8, l+16, l+24` (a full D-long dot product each), then every lane of
-the row reads the 32 scores, takes the new running max `m`, rescales its
+tile: all 64 threads load it (coalesced), lane `l` of row `r` scores key
+`l` (a full D-long dot product), then every lane of
+the row reads the 8 scores, takes the new running max `m`, rescales its
 `l` sum and its accumulators by `exp(m_old - m)` and adds `exp(s_j - m) ·
 V[j][c]` for its own D/8 columns `c = l + 8 i` (the online softmax of
 Milakov & Gimelshein / FlashAttention). The 8 lanes of a row compute the
@@ -44,7 +45,7 @@ Lk score -inf and load zeros. The accumulators are unrolled here in Lean
 `slangc -target cpp` refuses `GroupMemoryBarrierWithGroupSync` (E36107,
 `Cloth.SlangCodegen.DotReduceSerial`), so the tiled kernel has no cpp
 emit. Its sibling computes the same thing with the same operation order
-(32-key tiles, the same dot products, max, rescale and sums), one thread
+(8-key tiles, the same dot products, max, rescale and sums), one thread
 per query row and no groupshared: it is what the host L2 test
 (`tests/ggml_rd_kernels`) runs through the cpp emit, and on the GPU it is
 the A/B for the tiled kernel (`GGML_RD_SERIAL=1`).
@@ -66,11 +67,11 @@ def Kv.name : Kv → String
   | .f16 => "f16"
 
 /-- Queries per work group (rows) and lanes per row. -/
-def rows : Nat := 16
+def rows : Nat := 8
 def lanes : Nat := 8
 def threadgroup : Nat := rows * lanes
 /-- Keys per K/V tile. -/
-def tileKeys : Nat := 32
+def tileKeys : Nat := 8
 /-- Threads per work group of the serial sibling. -/
 def serialThreadgroup : Nat := 64
 
@@ -93,8 +94,6 @@ private def lt (a b : SlangExpr) : SlangExpr := .bin "<" a b
 private def ge (a b : SlangExpr) : SlangExpr := .bin ">=" a b
 private def sub (a b : SlangExpr) : SlangExpr := .bin "-" a b
 private def f0 : SlangExpr := .litFloat 0.0
-/-- -inf as a float: `asfloat(0xFF800000u)`. -/
-private def negInf : SlangExpr := .call "asfloat" [u 4286578688]
 private def ix2 (a : String) (i j : SlangExpr) : SlangExpr := .index (.index (v a) i) j
 private def off4E (w : Nat) (i0 i1 i2 i3 : SlangExpr) : SlangExpr :=
   .call "off4" [u w, i0, i1, i2, i3]
@@ -154,8 +153,12 @@ def tiledShared (d : Nat) : List SlangGroupSharedDecl :=
 def tiledSharedBytes (d : Nat) : Nat :=
   4 * (rows * (d + 1) + tileKeys * (d + 1) + tileKeys * d + rows * (tileKeys + 1))
 
-example : tiledSharedBytes 128 = 43264 := by native_decide
-example : tiledSharedBytes 128 ≤ 49152 := by native_decide
+example : tiledSharedBytes 128 = 12640 := by native_decide
+/-- WebGPU's default maxComputeWorkgroupStorageSize: every device runs the tiled kernel. -/
+example : tiledSharedBytes 128 ≤ 16384 := by native_decide
+example : tiledSharedBytes 64 ≤ 16384 := by native_decide
+/-- Every thread loads the same number of K/V elements per tile. -/
+example : [64, 128].all (fun d => (tileKeys * d) % threadgroup == 0) && tileKeys % lanes == 0 := by native_decide
 
 private def barrier : SlangStmt := .expr (.call "GroupMemoryBarrierWithGroupSync" [])
 
@@ -345,10 +348,10 @@ def expectedTiledF32D64 : String := "struct Slot {
   uint pad2;
 };
 
-groupshared float Qs[16][65];
-groupshared float Ks[32][65];
-groupshared float Vs[32][64];
-groupshared float Ss[16][33];
+groupshared float Qs[8][65];
+groupshared float Ks[8][65];
+groupshared float Vs[8][64];
+groupshared float Ss[8][9];
 
 [[vk::binding(0, 0)]]
 StructuredBuffer<uint> params;
@@ -375,12 +378,12 @@ uint off4(uint w, uint i0, uint i1, uint i2, uint i3) {
   return ((((pw((w + 8u)) + (i0 * pw((w + 4u)))) + (i1 * pw((w + 5u)))) + (i2 * pw((w + 6u)))) + (i3 * pw((w + 7u))));
 }
 
-[shader(\"compute\")] [numthreads(128, 1, 1)]
+[shader(\"compute\")] [numthreads(64, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint t = lid.x;
   uint r = (t / 8u);
   uint l = (t % 8u);
-  uint iq = ((gid.x * 16u) + r);
+  uint iq = ((gid.x * 8u) + r);
   uint h = gid.y;
   uint b = gid.z;
   uint lk = pw(20u);
@@ -404,7 +407,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     Qs[r][c] = x;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   float acc0 = 0.000000;
   float acc1 = 0.000000;
@@ -414,12 +417,12 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   float acc5 = 0.000000;
   float acc6 = 0.000000;
   float acc7 = 0.000000;
-  uint nt = ((lk + 31u) / 32u);
+  uint nt = ((lk + 7u) / 8u);
   for (uint tt = 0u; tt < nt; ++tt) {
-    uint k0 = (tt * 32u);
+    uint k0 = (tt * 8u);
     GroupMemoryBarrierWithGroupSync();
-    for (uint i = 0u; i < 16u; ++i) {
-      uint f = (t + (i * 128u));
+    for (uint i = 0u; i < 8u; ++i) {
+      uint f = (t + (i * 64u));
       uint j = (f / 64u);
       uint c = (f % 64u);
       uint key = (k0 + j);
@@ -434,51 +437,21 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     GroupMemoryBarrierWithGroupSync();
     float d0 = 0.000000;
-    float d1 = 0.000000;
-    float d2 = 0.000000;
-    float d3 = 0.000000;
     for (uint c = 0u; c < 64u; ++c) {
       float qc = Qs[r][c];
       d0 = (d0 + (qc * Ks[l][c]));
-      d1 = (d1 + (qc * Ks[(l + 8u)][c]));
-      d2 = (d2 + (qc * Ks[(l + 16u)][c]));
-      d3 = (d3 + (qc * Ks[(l + 24u)][c]));
     }
     d0 = (d0 * scale);
     if ((cap != 0.000000)) {
       d0 = (cap * tanh(d0));
     }
     if (((k0 + l) >= lk)) {
-      d0 = asfloat(4286578688u);
+      d0 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][l] = d0;
-    d1 = (d1 * scale);
-    if ((cap != 0.000000)) {
-      d1 = (cap * tanh(d1));
-    }
-    if (((k0 + (l + 8u)) >= lk)) {
-      d1 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 8u)] = d1;
-    d2 = (d2 * scale);
-    if ((cap != 0.000000)) {
-      d2 = (cap * tanh(d2));
-    }
-    if (((k0 + (l + 16u)) >= lk)) {
-      d2 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 16u)] = d2;
-    d3 = (d3 * scale);
-    if ((cap != 0.000000)) {
-      d3 = (cap * tanh(d3));
-    }
-    if (((k0 + (l + 24u)) >= lk)) {
-      d3 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 24u)] = d3;
     GroupMemoryBarrierWithGroupSync();
     float mt = m;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       mt = max(mt, Ss[r][j]);
     }
     float corr = exp((m - mt));
@@ -491,7 +464,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     acc6 = (acc6 * corr);
     acc7 = (acc7 * corr);
     float ps = 0.000000;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       float p = exp((Ss[r][j] - mt));
       ps = (ps + p);
       acc0 = (acc0 + (p * Vs[j][l]));
@@ -527,10 +500,10 @@ def expectedTiledF32D128 : String := "struct Slot {
   uint pad2;
 };
 
-groupshared float Qs[16][129];
-groupshared float Ks[32][129];
-groupshared float Vs[32][128];
-groupshared float Ss[16][33];
+groupshared float Qs[8][129];
+groupshared float Ks[8][129];
+groupshared float Vs[8][128];
+groupshared float Ss[8][9];
 
 [[vk::binding(0, 0)]]
 StructuredBuffer<uint> params;
@@ -557,12 +530,12 @@ uint off4(uint w, uint i0, uint i1, uint i2, uint i3) {
   return ((((pw((w + 8u)) + (i0 * pw((w + 4u)))) + (i1 * pw((w + 5u)))) + (i2 * pw((w + 6u)))) + (i3 * pw((w + 7u))));
 }
 
-[shader(\"compute\")] [numthreads(128, 1, 1)]
+[shader(\"compute\")] [numthreads(64, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint t = lid.x;
   uint r = (t / 8u);
   uint l = (t % 8u);
-  uint iq = ((gid.x * 16u) + r);
+  uint iq = ((gid.x * 8u) + r);
   uint h = gid.y;
   uint b = gid.z;
   uint lk = pw(20u);
@@ -586,7 +559,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     Qs[r][c] = x;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   float acc0 = 0.000000;
   float acc1 = 0.000000;
@@ -604,12 +577,12 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   float acc13 = 0.000000;
   float acc14 = 0.000000;
   float acc15 = 0.000000;
-  uint nt = ((lk + 31u) / 32u);
+  uint nt = ((lk + 7u) / 8u);
   for (uint tt = 0u; tt < nt; ++tt) {
-    uint k0 = (tt * 32u);
+    uint k0 = (tt * 8u);
     GroupMemoryBarrierWithGroupSync();
-    for (uint i = 0u; i < 32u; ++i) {
-      uint f = (t + (i * 128u));
+    for (uint i = 0u; i < 16u; ++i) {
+      uint f = (t + (i * 64u));
       uint j = (f / 128u);
       uint c = (f % 128u);
       uint key = (k0 + j);
@@ -624,51 +597,21 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     GroupMemoryBarrierWithGroupSync();
     float d0 = 0.000000;
-    float d1 = 0.000000;
-    float d2 = 0.000000;
-    float d3 = 0.000000;
     for (uint c = 0u; c < 128u; ++c) {
       float qc = Qs[r][c];
       d0 = (d0 + (qc * Ks[l][c]));
-      d1 = (d1 + (qc * Ks[(l + 8u)][c]));
-      d2 = (d2 + (qc * Ks[(l + 16u)][c]));
-      d3 = (d3 + (qc * Ks[(l + 24u)][c]));
     }
     d0 = (d0 * scale);
     if ((cap != 0.000000)) {
       d0 = (cap * tanh(d0));
     }
     if (((k0 + l) >= lk)) {
-      d0 = asfloat(4286578688u);
+      d0 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][l] = d0;
-    d1 = (d1 * scale);
-    if ((cap != 0.000000)) {
-      d1 = (cap * tanh(d1));
-    }
-    if (((k0 + (l + 8u)) >= lk)) {
-      d1 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 8u)] = d1;
-    d2 = (d2 * scale);
-    if ((cap != 0.000000)) {
-      d2 = (cap * tanh(d2));
-    }
-    if (((k0 + (l + 16u)) >= lk)) {
-      d2 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 16u)] = d2;
-    d3 = (d3 * scale);
-    if ((cap != 0.000000)) {
-      d3 = (cap * tanh(d3));
-    }
-    if (((k0 + (l + 24u)) >= lk)) {
-      d3 = asfloat(4286578688u);
-    }
-    Ss[r][(l + 24u)] = d3;
     GroupMemoryBarrierWithGroupSync();
     float mt = m;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       mt = max(mt, Ss[r][j]);
     }
     float corr = exp((m - mt));
@@ -689,7 +632,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     acc14 = (acc14 * corr);
     acc15 = (acc15 * corr);
     float ps = 0.000000;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       float p = exp((Ss[r][j] - mt));
       ps = (ps + p);
       acc0 = (acc0 + (p * Vs[j][l]));
@@ -791,19 +734,19 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint vn = pw(33u);
   float qv[64];
   float acc[64];
-  float sc[32];
+  float sc[8];
   for (uint c = 0u; c < 64u; ++c) {
     qv[c] = s0[(qb + c)];
     acc[c] = 0.000000;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
-  uint nt = ((lk + 31u) / 32u);
+  uint nt = ((lk + 7u) / 8u);
   for (uint tt = 0u; tt < nt; ++tt) {
-    uint k0 = (tt * 32u);
-    for (uint j = 0u; j < 32u; ++j) {
+    uint k0 = (tt * 8u);
+    for (uint j = 0u; j < 8u; ++j) {
       uint key = (k0 + j);
-      float s = asfloat(4286578688u);
+      float s = asfloat((4286578688u | (pw(0u) & 0u)));
       if ((key < lk)) {
         s = 0.000000;
         for (uint c = 0u; c < 64u; ++c) {
@@ -817,7 +760,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       sc[j] = s;
     }
     float mt = m;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       mt = max(mt, sc[j]);
     }
     float corr = exp((m - mt));
@@ -825,7 +768,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       acc[c] = (acc[c] * corr);
     }
     float ps = 0.000000;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       float p = exp((sc[j] - mt));
       ps = (ps + p);
       uint key = (k0 + j);

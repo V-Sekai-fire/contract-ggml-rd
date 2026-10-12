@@ -9,8 +9,9 @@
 //                    F32 (both accumulate in f32); a softcap is computed, and
 //                    max_bias is accepted because without a mask ALiBi has
 //                    nothing to scale (ggml-cpu multiplies the mask by it).
-//   pack(p)       -- the tiled kernel (16 queries of one head per group of
-//                    128 threads, grid (ceil(N / 16), Hq, B)), or under
+//   pack(p)       -- the tiled kernel (8 queries of one head per group of
+//                    64 threads, grid (ceil(N / 8), Hq, B); one kernel on
+//                    every device, it fits WebGPU's 16384 bytes), or under
 //                    GGML_RD_SERIAL=1 its _serial sibling (one thread per
 //                    query row, a 1-D grid): the host L2 harness runs the
 //                    sibling, which has a cpp emit, and on the GPU it is the
@@ -30,7 +31,7 @@ namespace {
 
 using namespace ggml_rd;
 
-constexpr uint32_t kRows = 16; // queries per work group of the tiled kernel
+constexpr uint32_t kRows = 8; // queries per work group of the tiled kernel (lean FlashAttn.rows)
 constexpr uint32_t W_RK2 = 55, W_RK3 = 56, W_RV2 = 57, W_RV3 = 58, W_SCALE = 59, W_SOFTCAP = 60;
 
 // op_params word i (ggml-impl.h's accessors are internal to ggml).

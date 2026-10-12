@@ -67,19 +67,19 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint vn = pw(33u);
   float qv[64];
   float acc[64];
-  float sc[32];
+  float sc[8];
   for (uint c = 0u; c < 64u; ++c) {
     qv[c] = f16tof32(f32tof16(s0[(qb + c)]));
     acc[c] = 0.000000;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
-  uint nt = ((lk + 31u) / 32u);
+  uint nt = ((lk + 7u) / 8u);
   for (uint tt = 0u; tt < nt; ++tt) {
-    uint k0 = (tt * 32u);
-    for (uint j = 0u; j < 32u; ++j) {
+    uint k0 = (tt * 8u);
+    for (uint j = 0u; j < 8u; ++j) {
       uint key = (k0 + j);
-      float s = asfloat(4286578688u);
+      float s = asfloat((4286578688u | (pw(0u) & 0u)));
       if ((key < lk)) {
         s = 0.000000;
         for (uint c = 0u; c < 64u; ++c) {
@@ -93,7 +93,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       sc[j] = s;
     }
     float mt = m;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       mt = max(mt, sc[j]);
     }
     float corr = exp((m - mt));
@@ -101,7 +101,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       acc[c] = (acc[c] * corr);
     }
     float ps = 0.000000;
-    for (uint j = 0u; j < 32u; ++j) {
+    for (uint j = 0u; j < 8u; ++j) {
       float p = exp((sc[j] - mt));
       ps = (ps + p);
       uint key = (k0 + j);

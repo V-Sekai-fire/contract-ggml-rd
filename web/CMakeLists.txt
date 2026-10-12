@@ -23,6 +23,10 @@ set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+# The module ships to the public web: no build machine paths in it. __FILE__
+# in asserts and the debug info name sources relative to the checkouts' parent.
+get_filename_component(CHECKOUTS "${ROOT}/.." ABSOLUTE)
+add_compile_options("-ffile-prefix-map=${CHECKOUTS}/=" "-ffile-prefix-map=$ENV{HOME}/=")
 add_subdirectory(${GGML_ROOT} ggml EXCLUDE_FROM_ALL)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -83,12 +87,13 @@ target_include_directories(ggml_rd_web PUBLIC
 set_source_files_properties(${HOST_KERNELS} PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/slang_platform_web.h")
 target_link_libraries(ggml_rd_web PUBLIC ggml ggml-cpu ggml-base)
 target_compile_options(ggml_rd_web PRIVATE -msimd128 -fexceptions)
+target_compile_definitions(ggml_rd_web PUBLIC GGML_RD_WEB=1)
 
 set(WEB_LINK
 	-sASYNCIFY -sASYNCIFY_STACK_SIZE=1048576
 	-sALLOW_MEMORY_GROWTH -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=4MB
 	-sMODULARIZE -sEXPORT_ES6 -sENVIRONMENT=web,worker
-	-sEXPORTED_RUNTIME_METHODS=ccall
+	-sEXPORTED_RUNTIME_METHODS=ccall,HEAPF32,ENV
 	-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToNewUTF8,$UTF8ToString
 	--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/rd_webgpu.js)
 

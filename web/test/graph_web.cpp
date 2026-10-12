@@ -1,9 +1,11 @@
 // web/test: the G3.graph nets (guest/ggml_test/graph_nets.cpp) on ggml-rd's
-// WebGPU device against ggml-cpu, both in this one wasm module.
+// WebGPU device against ggml-cpu references computed natively (web/refs) and
+// handed in with web_put_ref: the browser runs no CPU reference.
 //
-//   rd native vs cpu native   rel-L2 <= 1e-3   (tests/ggml_graph_oracle's bounds)
-//   rd f32    vs cpu f32      rel-L2 <= 1e-4
+//   rd native vs ref native   rel-L2 <= 1e-3   (tests/ggml_graph_oracle's bounds)
+//   rd f32    vs ref f32      rel-L2 <= 1e-4
 //   control: GGML_RD_FAULT=1 (a source of every dispatch moved) must fail
+//   a net with no reference FAILS
 //
 // web_main takes graph names separated by spaces (default: qwen sconv
 // kimodo_denoiser dit); call it with ccall(..., {async: true}), since the GPU
@@ -12,6 +14,7 @@
 // over the 128 MiB storage binding every WebGPU device offers.
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -19,7 +22,6 @@
 
 #include <emscripten.h>
 
-#include "ggml-cpu.h"
 #include "ggml-rd.h"
 #include "graph_nets.h"
 #include "rd_compute.h"
@@ -29,19 +31,30 @@ using namespace graph_nets;
 namespace {
 
 rdc::Device g_dev;
+std::map<std::string, std::vector<float>> g_refs; // "<graph>/<arm>/<output>"
+
+// The references for one net and arm, named as read_outs names them.
+bool refs_for(const std::string &g, const std::string &arm, const Outs &like, Outs &out) {
+	out.clear();
+	for (const auto &x : like) {
+		auto it = g_refs.find(g + "/" + arm + "/" + x.first);
+		if (it == g_refs.end() || it->second.size() != x.second.size()) {
+			return false;
+		}
+		out.emplace_back(x.first, it->second);
+	}
+	return !out.empty();
+}
 
 ggml_backend_t rd_backend() {
 	ggml_backend_reg_t reg = ggml_backend_rd_reg();
 	return ggml_backend_reg_dev_count(reg) ? ggml_backend_dev_init(ggml_backend_reg_dev_get(reg, 0), nullptr) : nullptr;
 }
 
-bool run_net(const BuildFn &build, bool rd, bool f32_arm, Outs &out, std::string *why) {
+bool run_net(const BuildFn &build, bool f32_arm, Outs &out, std::string *why) {
 	Net n;
-	n.be = rd ? rd_backend() : ggml_backend_cpu_init();
-	n.rd = rd;
-	if (n.be != nullptr && !rd) {
-		ggml_backend_cpu_set_n_threads(n.be, 1); // no pthreads: runs without cross-origin isolation
-	}
+	n.be = rd_backend();
+	n.rd = true;
 	if (n.be == nullptr) {
 		*why = "no backend";
 		return false;
@@ -77,6 +90,10 @@ bool all_of_finite(const Outs &o) {
 	return !o.empty();
 }
 
+extern "C" EMSCRIPTEN_KEEPALIVE void web_put_ref(const char *key, const float *data, int n) {
+	g_refs[key].assign(data, data + n);
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE int web_main(const char *names) {
 	std::vector<std::string> graphs;
 	std::istringstream in(names ? names : "");
@@ -108,24 +125,26 @@ extern "C" EMSCRIPTEN_KEEPALIVE int web_main(const char *names) {
 			const double bound = f32_arm ? 1e-4 : 1e-3;
 			Outs ref, rd, faulted;
 			std::string why;
-			const double t0 = double(rdc::host_usec());
-			bool ok = run_net(build, false, f32_arm, ref, &why);
 			const double t1 = double(rdc::host_usec());
-			ok = ok && run_net(build, true, f32_arm, rd, &why);
+			bool ok = run_net(build, f32_arm, rd, &why);
 			const double t2 = double(rdc::host_usec());
+			if (ok && !refs_for(g, f32_arm ? "f32" : "native", rd, ref)) {
+				ok = false;
+				why = "no reference for " + g + (f32_arm ? "/f32" : "/native") + " (web/refs)";
+			}
 			double worst = -1.0, worst_fault = -1.0;
 			if (ok) {
-				worst = compare(g.c_str(), arm, rd, ref, resid, false);
+				worst = compare(g.c_str(), arm, rd, ref, resid, std::getenv("GGML_RD_WEB_VERBOSE") != nullptr);
 				setenv("GGML_RD_FAULT", "1", 1);
 				std::string fwhy;
-				const bool fok = run_net(build, true, f32_arm, faulted, &fwhy);
+				const bool fok = run_net(build, f32_arm, faulted, &fwhy);
 				unsetenv("GGML_RD_FAULT");
 				worst_fault = fok ? compare(g.c_str(), "fault", faulted, ref, resid, false) : -1.0;
 			}
 			const bool good = ok && worst >= 0.0 && worst <= bound && all_of_finite(rd);
 			const bool caught = !(worst_fault >= 0.0 && worst_fault <= bound);
-			std::printf("%s %-16s %-5s rel_l2=%.3e (max %.0e) cpu_ms=%.0f webgpu_ms=%.0f control(fault)=%s rel_l2=%.3e%s%s\n",
-					good ? "OK  " : "FAIL", g.c_str(), arm, worst, bound, (t1 - t0) / 1000.0, (t2 - t1) / 1000.0,
+			std::printf("%s %-16s %-5s rel_l2=%.3e (max %.0e) webgpu_ms=%.0f control(fault)=%s rel_l2=%.3e%s%s\n",
+					good ? "OK  " : "FAIL", g.c_str(), arm, worst, bound, (t2 - t1) / 1000.0,
 					caught ? "caught" : "MISSED", worst_fault, why.empty() ? "" : " error: ", why.c_str());
 			pass = pass && good && caught;
 		}

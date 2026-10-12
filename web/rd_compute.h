@@ -17,10 +17,13 @@
 
 namespace rdc {
 
+// A buffer at a binding slot; size 0 binds from offset to the end.
 struct Binding {
 	uint32_t binding;
 	int type;
 	::RID rid;
+	uint64_t offset = 0;
+	uint64_t size = 0;
 };
 
 int64_t host_usec();
@@ -56,6 +59,9 @@ public:
 	void dispatch(uint32_t groups_x, uint32_t groups_y = 1, uint32_t groups_z = 1);
 	// WebGPU orders the dispatches of one compute pass by itself.
 	void barrier() {}
+	// Inside a list: end the compute pass, copy, open the next pass (the
+	// pipeline and sets must be bound again).
+	void list_copy(::RID src, uint64_t src_offset, ::RID dst, uint64_t dst_offset, uint64_t bytes);
 	void list_end();
 	void submit();
 	void sync();
