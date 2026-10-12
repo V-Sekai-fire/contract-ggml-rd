@@ -48,7 +48,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint ys = pw(5u);
   float scale = pf(37u);
   for (uint t = 0u; t < 64u; ++t) {
-    float acc_mx = asfloat(0xFF800000u);
+    float acc_mx = asfloat((4286578688u | (pw(0u) & 0u)));
     uint i_mx = t;
     while ((i_mx < n)) {
       float x = s0[(xb + (i_mx * xs))];

@@ -72,14 +72,14 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     qv[c] = f16tof32(f32tof16(s0[(qb + c)]));
     acc[c] = 0.000000;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   uint nt = ((lk + 31u) / 32u);
   for (uint tt = 0u; tt < nt; ++tt) {
     uint k0 = (tt * 32u);
     for (uint j = 0u; j < 32u; ++j) {
       uint key = (k0 + j);
-      float s = asfloat(4286578688u);
+      float s = asfloat((4286578688u | (pw(0u) & 0u)));
       if ((key < lk)) {
         s = 0.000000;
         for (uint c = 0u; c < 64u; ++c) {

@@ -36,6 +36,20 @@ struct Range {
 	uint64_t lo, hi; // [lo, hi) bytes
 };
 
+#ifdef GGML_RD_WEB
+// WebGPU refuses a dispatch whose writable bindings overlap in one buffer, so
+// each tensor is bound as its own range, offsets counted from the range's
+// start, and a source that overlaps another binding of its buffer (in place,
+// or one tensor in two slots) is copied to scratch first, in stream order.
+struct WebSlot {
+	const ggml_tensor *t = nullptr;
+	::RID rid; // the tensor's buffer, or the scratch buffer
+	uint64_t start = 0, size = 0; // the bound range; start is a multiple of 256
+	uint64_t src_start = 0; // where a scratch copy reads, in the tensor's buffer
+	::RID src_rid; // null unless this slot binds a scratch copy
+};
+#endif
+
 struct Dispatch {
 	int kernel;
 	uint32_t groups[3];
@@ -46,6 +60,9 @@ struct Dispatch {
 	int nreads;
 	Range write;
 	const ggml_tensor *node;
+#ifdef GGML_RD_WEB
+	WebSlot slot[4]; // s0, s1, s2, dst
+#endif
 };
 
 bool overlaps(const std::vector<Range> &v, const Range &r) {
@@ -71,6 +88,23 @@ bool rd_offset(const ggml_tensor *t, void *, uint64_t *off) {
 	*off = byte_offset(t, b);
 	return true;
 }
+
+#ifdef GGML_RD_WEB
+constexpr uint64_t kBindAlign = 256; // WebGPU's minStorageBufferOffsetAlignment default
+
+// The tensor's offset from the start of the range bound for it.
+bool web_offset(const ggml_tensor *t, void *user, uint64_t *off) {
+	const WebSlot *slots = static_cast<const WebSlot *>(user);
+	const Buffer *b = buffer_of(t);
+	for (int k = 0; k < 4 && b != nullptr; ++k) {
+		if (slots[k].t == t) {
+			*off = byte_offset(t, b) - (slots[k].src_rid.index != 0 ? slots[k].src_start : slots[k].start);
+			return true;
+		}
+	}
+	return false;
+}
+#endif
 
 // Widened to whole 4-byte words: kernels address uint words, and a 16-bit
 // destination's read-modify-write (lean/Ggml/SlangCodegen/Move.lean) stores
@@ -144,12 +178,40 @@ ggml_status graph_compute(ggml_cgraph *g) {
 		}
 		uint32_t *w = table.data() + slot * kWordsPerSlot;
 		std::string why;
+		Dispatch dp{};
+		dp.node = node;
+#ifdef GGML_RD_WEB
+		if (!cpu) {
+			const ggml_tensor *ts[4] = { node->src[0], node->src[1], node->src[2], node };
+			for (int k : { 3, 0, 1, 2 }) {
+				const Buffer *b = buffer_of(ts[k]);
+				if (ts[k] == nullptr || b == nullptr) {
+					continue;
+				}
+				const Range r = range_of(ts[k], b);
+				WebSlot &sl = dp.slot[k];
+				sl.t = ts[k];
+				sl.rid = b->rid;
+				sl.start = r.lo & ~(kBindAlign - 1);
+				sl.size = r.hi - sl.start;
+				for (int j = 0; j < 4 && k != 3; ++j) {
+					const WebSlot &o = dp.slot[j];
+					if (j != k && o.t != nullptr && o.src_rid.index == 0 && o.rid.index == sl.rid.index &&
+							o.start < sl.start + sl.size && sl.start < o.start + o.size) {
+						sl.src_rid = sl.rid; // bound below to a scratch copy
+						sl.src_start = sl.start;
+						break;
+					}
+				}
+			}
+		}
+		if (!fill_standard(w, node, cpu ? rd_offset : web_offset, cpu ? nullptr : dp.slot, &why)) {
+#else
 		if (!fill_standard(w, node, rd_offset, nullptr, &why)) {
+#endif
 			return fail_graph(why + ": " + node_desc(node));
 		}
 
-		Dispatch dp{};
-		dp.node = node;
 		Buffer *db = buffer_of(node);
 		dp.write = range_of(node, db);
 		dp.bind[3] = db->rid;
@@ -269,12 +331,43 @@ ggml_status graph_compute(ggml_cgraph *g) {
 			return fail_graph("slot set " + std::to_string(i) + ": " + c.last_error);
 		}
 	}
+#ifdef GGML_RD_WEB
+	// Scratch for the copied sources: one region per copy, in graph order.
+	uint64_t scratch_bytes = 0;
+	for (Dispatch &dp : ds) {
+		for (WebSlot &sl : dp.slot) {
+			if (sl.src_rid.index != 0) {
+				sl.start = scratch_bytes;
+				scratch_bytes += (sl.size + kBindAlign - 1) & ~(kBindAlign - 1);
+			}
+		}
+	}
+	::RID scratch = scratch_bytes ? scratch_buffer(scratch_bytes) : ::RID();
+	if (scratch_bytes && scratch.index == 0) {
+		return fail_graph("scratch for " + std::to_string(scratch_bytes) + " bytes: " + c.last_error);
+	}
+	for (Dispatch &dp : ds) {
+		RangeBinding rb[4];
+		for (int k = 0; k < 4; ++k) {
+			WebSlot &sl = dp.slot[k];
+			if (sl.src_rid.index != 0) {
+				sl.rid = scratch;
+			}
+			rb[k] = RangeBinding{ sl.rid, sl.start, sl.size };
+		}
+		dp.set0 = tensor_set_ranged(params, rb);
+		if (dp.set0.index == 0) {
+			return fail_graph("set 0 for " + node_desc(dp.node) + ": " + c.last_error);
+		}
+	}
+#else
 	for (Dispatch &dp : ds) {
 		dp.set0 = tensor_set(params, dp.bind[0], dp.bind[1], dp.bind[2], dp.bind[3]);
 		if (dp.set0.index == 0) {
 			return fail_graph("set 0 for " + node_desc(dp.node) + ": " + c.last_error);
 		}
 	}
+#endif
 	const int64_t t_prepared = clock();
 	// A COOP yield above ended a frame, but nothing was submitted, so the
 	// device is still idle here.
@@ -326,6 +419,16 @@ ggml_status graph_compute(ggml_cgraph *g) {
 			seg_reads.push_back(dp.reads[r]);
 		}
 		seg_writes.push_back(dp.write);
+#ifdef GGML_RD_WEB
+		for (const WebSlot &sl : dp.slot) {
+			if (sl.src_rid.index != 0) {
+				// Ends the compute pass, copies, opens the next: rebind after it.
+				d.list_copy(sl.src_rid, sl.src_start, sl.rid, sl.start, sl.size);
+				bound_kernel = -1;
+				bound_set0 = 0;
+			}
+		}
+#endif
 		if (dp.kernel != bound_kernel) {
 			d.bind_pipeline(kernel_pipeline(dp.kernel));
 			bound_kernel = dp.kernel;

@@ -4449,7 +4449,10 @@ void _main_0(void* _S16, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 55
-        _S27 = (U32_asfloat((4286578688U)));
+        uint32_t _S28 = pw_0(0U, &kernelContext_3);
+
+#line 55
+        _S27 = (U32_asfloat((4286578688U | (_S28 & 0U))));
 
 #line 55
     }

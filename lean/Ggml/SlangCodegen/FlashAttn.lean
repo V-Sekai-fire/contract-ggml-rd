@@ -93,8 +93,6 @@ private def lt (a b : SlangExpr) : SlangExpr := .bin "<" a b
 private def ge (a b : SlangExpr) : SlangExpr := .bin ">=" a b
 private def sub (a b : SlangExpr) : SlangExpr := .bin "-" a b
 private def f0 : SlangExpr := .litFloat 0.0
-/-- -inf as a float: `asfloat(0xFF800000u)`. -/
-private def negInf : SlangExpr := .call "asfloat" [u 4286578688]
 private def ix2 (a : String) (i j : SlangExpr) : SlangExpr := .index (.index (v a) i) j
 private def off4E (w : Nat) (i0 i1 i2 i3 : SlangExpr) : SlangExpr :=
   .call "off4" [u w, i0, i1, i2, i3]
@@ -404,7 +402,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     Qs[r][c] = x;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   float acc0 = 0.000000;
   float acc1 = 0.000000;
@@ -449,7 +447,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d0 = (cap * tanh(d0));
     }
     if (((k0 + l) >= lk)) {
-      d0 = asfloat(4286578688u);
+      d0 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][l] = d0;
     d1 = (d1 * scale);
@@ -457,7 +455,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d1 = (cap * tanh(d1));
     }
     if (((k0 + (l + 8u)) >= lk)) {
-      d1 = asfloat(4286578688u);
+      d1 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 8u)] = d1;
     d2 = (d2 * scale);
@@ -465,7 +463,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d2 = (cap * tanh(d2));
     }
     if (((k0 + (l + 16u)) >= lk)) {
-      d2 = asfloat(4286578688u);
+      d2 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 16u)] = d2;
     d3 = (d3 * scale);
@@ -473,7 +471,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d3 = (cap * tanh(d3));
     }
     if (((k0 + (l + 24u)) >= lk)) {
-      d3 = asfloat(4286578688u);
+      d3 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 24u)] = d3;
     GroupMemoryBarrierWithGroupSync();
@@ -586,7 +584,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     Qs[r][c] = x;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   float acc0 = 0.000000;
   float acc1 = 0.000000;
@@ -639,7 +637,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d0 = (cap * tanh(d0));
     }
     if (((k0 + l) >= lk)) {
-      d0 = asfloat(4286578688u);
+      d0 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][l] = d0;
     d1 = (d1 * scale);
@@ -647,7 +645,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d1 = (cap * tanh(d1));
     }
     if (((k0 + (l + 8u)) >= lk)) {
-      d1 = asfloat(4286578688u);
+      d1 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 8u)] = d1;
     d2 = (d2 * scale);
@@ -655,7 +653,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d2 = (cap * tanh(d2));
     }
     if (((k0 + (l + 16u)) >= lk)) {
-      d2 = asfloat(4286578688u);
+      d2 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 16u)] = d2;
     d3 = (d3 * scale);
@@ -663,7 +661,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d3 = (cap * tanh(d3));
     }
     if (((k0 + (l + 24u)) >= lk)) {
-      d3 = asfloat(4286578688u);
+      d3 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 24u)] = d3;
     GroupMemoryBarrierWithGroupSync();
@@ -796,14 +794,14 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     qv[c] = s0[(qb + c)];
     acc[c] = 0.000000;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   uint nt = ((lk + 31u) / 32u);
   for (uint tt = 0u; tt < nt; ++tt) {
     uint k0 = (tt * 32u);
     for (uint j = 0u; j < 32u; ++j) {
       uint key = (k0 + j);
-      float s = asfloat(4286578688u);
+      float s = asfloat((4286578688u | (pw(0u) & 0u)));
       if ((key < lk)) {
         s = 0.000000;
         for (uint c = 0u; c < 64u; ++c) {

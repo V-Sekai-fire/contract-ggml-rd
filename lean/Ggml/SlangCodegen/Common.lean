@@ -138,6 +138,10 @@ def udiv (a b : SlangExpr) : SlangExpr := .bin "/" a b
 /-- `pw(k)`: word `k` of this dispatch's slot. -/
 def pwE (k : SlangExpr) : SlangExpr := .call "pw" [k]
 def pwN (k : Nat) : SlangExpr := pwE (u k)
+/-- -inf as `asfloat(0xFF800000u | (pw(0u) & 0u))`. The bits are -inf on every
+target; the runtime zero keeps it out of WGSL's constant expressions, which
+may not be infinite (Chrome's compiler rejects one). Needs `fnPw`. -/
+def negInf : SlangExpr := .call "asfloat" [.bin "|" (u 0xFF800000) (.bin "&" (pwN 0) (u 0))]
 /-- `pf(k)`: word `k` as a float (op_params hold floats bit for bit). -/
 def pfN (k : Nat) : SlangExpr := .call "pf" [u k]
 

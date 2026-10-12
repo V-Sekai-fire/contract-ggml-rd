@@ -64,7 +64,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
     }
     Qs[r][c] = x;
   }
-  float m = asfloat(4286578688u);
+  float m = asfloat((4286578688u | (pw(0u) & 0u)));
   float ls = 0.000000;
   float acc0 = 0.000000;
   float acc1 = 0.000000;
@@ -109,7 +109,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d0 = (cap * tanh(d0));
     }
     if (((k0 + l) >= lk)) {
-      d0 = asfloat(4286578688u);
+      d0 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][l] = d0;
     d1 = (d1 * scale);
@@ -117,7 +117,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d1 = (cap * tanh(d1));
     }
     if (((k0 + (l + 8u)) >= lk)) {
-      d1 = asfloat(4286578688u);
+      d1 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 8u)] = d1;
     d2 = (d2 * scale);
@@ -125,7 +125,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d2 = (cap * tanh(d2));
     }
     if (((k0 + (l + 16u)) >= lk)) {
-      d2 = asfloat(4286578688u);
+      d2 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 16u)] = d2;
     d3 = (d3 * scale);
@@ -133,7 +133,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
       d3 = (cap * tanh(d3));
     }
     if (((k0 + (l + 24u)) >= lk)) {
-      d3 = asfloat(4286578688u);
+      d3 = asfloat((4286578688u | (pw(0u) & 0u)));
     }
     Ss[r][(l + 24u)] = d3;
     GroupMemoryBarrierWithGroupSync();

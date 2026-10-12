@@ -195,7 +195,7 @@ def negInfBits : Nat := 0xFF800000
 def diagMaskInfF32 : SlangShaderModule :=
   shader []
     (.ternary (.bin ">" (v "i0") (add (pwN wOpParams) (v "i1")))
-      (.call "asfloat" [u negInfBits]) (v "x"))
+      negInf (v "x"))
 
 /-- The kernels this module contributes, by their kernels.txt names. -/
 def kernels : List (String × SlangShaderModule) :=
@@ -326,7 +326,7 @@ example : LeanSlang.emit scaleF32 = sibling "float pf(uint k) {
 " "dst[d] = ((pf(38u) == 0.0f) ? (x * pf(37u)) : ((x * pf(37u)) + pf(38u)));" := by native_decide
 
 example : LeanSlang.emit diagMaskInfF32 = sibling ""
-  "dst[d] = ((i0 > (pw(37u) + i1)) ? asfloat(4286578688u) : x);" := by native_decide
+  "dst[d] = ((i0 > (pw(37u) + i1)) ? asfloat((4286578688u | (pw(0u) & 0u))) : x);" := by native_decide
 
 example : LeanSlang.emit reluF32 = sibling "float relu(float x) {
   return ((x > 0.0f) ? x : 0.0f);

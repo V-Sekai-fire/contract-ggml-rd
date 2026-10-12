@@ -83,6 +83,7 @@ target_include_directories(ggml_rd_web PUBLIC
 set_source_files_properties(${HOST_KERNELS} PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/slang_platform_web.h")
 target_link_libraries(ggml_rd_web PUBLIC ggml ggml-cpu ggml-base)
 target_compile_options(ggml_rd_web PRIVATE -msimd128 -fexceptions)
+target_compile_definitions(ggml_rd_web PUBLIC GGML_RD_WEB=1)
 
 set(WEB_LINK
 	-sASYNCIFY -sASYNCIFY_STACK_SIZE=1048576

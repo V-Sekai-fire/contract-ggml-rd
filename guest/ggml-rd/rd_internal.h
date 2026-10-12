@@ -101,6 +101,17 @@ bool cpu_run(const CpuDispatch &d, std::string *why);
 ::RID tensor_set(::RID params, ::RID s0, ::RID s1, ::RID s2, ::RID dst);
 // Godot frees a buffer's uniform sets with it; drop them from the cache.
 void forget_sets_of(::RID buffer);
+#ifdef GGML_RD_WEB
+// The web device binds ranges (rd_graph.cpp, WebSlot): set 0 of (params,
+// s0, s1, s2, dst), each a buffer range; a null RID binds the device's dummy.
+struct RangeBinding {
+	::RID rid;
+	uint64_t offset = 0, size = 0;
+};
+::RID tensor_set_ranged(::RID params, const RangeBinding slots[4]);
+// One scratch storage buffer of at least `bytes`, kept and grown.
+::RID scratch_buffer(uint64_t bytes);
+#endif
 void release_kernels();
 
 } // namespace ggml_rd

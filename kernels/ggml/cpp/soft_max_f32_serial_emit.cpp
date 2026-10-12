@@ -4453,14 +4453,15 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
             break;
         }
 
-#line 51
-        float _S26 = (U32_asfloat((4286578688U)));
+#line 50
+        uint32_t _S26 = pw_0(0U, &kernelContext_3);
+        float _S27 = (U32_asfloat((4286578688U | (_S26 & 0U))));
 
 #line 51
         i_mx_0 = t_0;
 
 #line 51
-        acc_mx_0 = _S26;
+        acc_mx_0 = _S27;
 
         for(;;)
         {
@@ -4475,13 +4476,13 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
 #line 53
                 break;
             }
-            float _S27 = (F32_max((acc_mx_0), (*(&((&kernelContext_3)->globalParams_0->s0_0)[_S21 + i_mx_0 * _S22]) * _S25)));
+            float _S28 = (F32_max((acc_mx_0), (*(&((&kernelContext_3)->globalParams_0->s0_0)[_S21 + i_mx_0 * _S22]) * _S25)));
 
 #line 55
             i_mx_0 = i_mx_0 + 256U;
 
 #line 55
-            acc_mx_0 = _S27;
+            acc_mx_0 = _S28;
 
 #line 53
         }
@@ -4703,19 +4704,19 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
         }
 
 #line 82
-        uint32_t _S28 = t_0 + 1U;
+        uint32_t _S29 = t_0 + 1U;
 
 #line 82
-        sh_0[t_0] = (F32_max((sh_0[t_0]), (sh_0[_S28])));
+        sh_0[t_0] = (F32_max((sh_0[t_0]), (sh_0[_S29])));
 
 #line 81
-        t_0 = _S28;
+        t_0 = _S29;
 
 #line 81
     }
 
 
-    float _S29 = sh_0[0U];
+    float _S30 = sh_0[0U];
 
 #line 84
     t_0 = 0U;
@@ -4753,13 +4754,13 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
 #line 88
                 break;
             }
-            float _S30 = acc_mx_0 + (F32_exp((*(&((&kernelContext_3)->globalParams_0->s0_0)[_S21 + i_mx_0 * _S22]) * _S25 - _S29)));
+            float _S31 = acc_mx_0 + (F32_exp((*(&((&kernelContext_3)->globalParams_0->s0_0)[_S21 + i_mx_0 * _S22]) * _S25 - _S30)));
 
 #line 90
             i_mx_0 = i_mx_0 + 256U;
 
 #line 90
-            acc_mx_0 = _S30;
+            acc_mx_0 = _S31;
 
 #line 88
         }
@@ -4981,20 +4982,20 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
         }
 
 #line 117
-        uint32_t _S31 = t_0 + 1U;
+        uint32_t _S32 = t_0 + 1U;
 
 #line 117
-        sh_0[t_0] = sh_0[t_0] + sh_0[_S31];
+        sh_0[t_0] = sh_0[t_0] + sh_0[_S32];
 
 #line 116
-        t_0 = _S31;
+        t_0 = _S32;
 
 #line 116
     }
 
 
 
-    float _S32 = 1.0f / sh_0[0U];
+    float _S33 = 1.0f / sh_0[0U];
 
 #line 120
     i_mx_0 = 0U;
@@ -5011,7 +5012,7 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
 #line 121
             break;
         }
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[_S23 + i_mx_0 * _S24]) = (F32_exp((*(&((&kernelContext_3)->globalParams_0->s0_0)[_S21 + i_mx_0 * _S22]) * _S25 - _S29))) * _S32;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[_S23 + i_mx_0 * _S24]) = (F32_exp((*(&((&kernelContext_3)->globalParams_0->s0_0)[_S21 + i_mx_0 * _S22]) * _S25 - _S30))) * _S33;
 
 #line 121
         i_mx_0 = i_mx_0 + 1U;

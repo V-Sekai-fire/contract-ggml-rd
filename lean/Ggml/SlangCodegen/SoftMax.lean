@@ -31,7 +31,6 @@ open Ggml.SlangCodegen.Rows
 
 def x : SlangExpr := v "x"
 def w : SlangExpr := mul x (v "scale")
-def negInf : SlangExpr := fLit ((-1.0 : Float) / 0.0)
 
 def body (tg : Nat) (var : Variant) : List SlangStmt :=
   [ .declInit fl "scale" (pfN wOpParams) ] ++
@@ -58,12 +57,12 @@ def kernels : List (String × SlangShaderModule) :=
 
 /-! ## Pins -/
 
-/-- -inf is a bit pattern, not a decimal. -/
-example : emitExpr negInf = "asfloat(0xFF800000u)" := by native_decide
+/-- -inf is a bit pattern, not a decimal, and not a WGSL constant. -/
+example : emitExpr negInf = "asfloat((4286578688u | (pw(0u) & 0u)))" := by native_decide
 
 /-- The head of both reductions and the whole map, in the parallel kernel. -/
 example : ((LeanSlang.emit softMaxF32).splitOn "  float scale = pf(37u);
-  float acc_mx = asfloat(0xFF800000u);
+  float acc_mx = asfloat((4286578688u | (pw(0u) & 0u)));
   uint i_mx = t;
   while ((i_mx < n)) {
     float x = s0[(xb + (i_mx * xs))];
