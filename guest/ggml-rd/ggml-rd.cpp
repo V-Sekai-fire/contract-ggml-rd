@@ -291,12 +291,30 @@ static ggml_backend_buffer_t buft_alloc_buffer(ggml_backend_buffer_type_t bt, si
 			return nullptr;
 		}
 	}
+	uintptr_t base = 0;
+#if UINTPTR_MAX > 0xFFFFFFFFu
+	base = uintptr_t(0x1000) + (uintptr_t(c.next_buffer_index) << 40);
+#else
+	// 32-bit (wasm32): consecutive fake ranges, never reused, so one process
+	// makes at most ~4 GiB of buffers over its life.
+	static uint64_t next_base = 0x1000;
+	if (next_base + bytes + 4096 > 0xFFFFF000u) {
+		if (rid.index != 0) {
+			c.dev->free_rid(rid);
+		}
+		std::free(mem);
+		set_error("alloc_buffer: 32-bit fake address space used up");
+		return nullptr;
+	}
+	base = uintptr_t(next_base);
+	next_base += ((bytes + 4095) & ~uint64_t(4095)) + 4096;
+#endif
 	Buffer *b = new Buffer;
 	b->rid = rid;
 	b->mem = mem;
 	b->size = bytes;
 	b->index = c.next_buffer_index++;
-	b->base = uintptr_t(0x1000) + (uintptr_t(b->index) << 40);
+	b->base = base;
 	++c.st.buffers_live;
 	c.st.bytes_live += int64_t(bytes);
 	return ggml_backend_buffer_init(bt, buffer_iface(), b, size);
