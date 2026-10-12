@@ -5,6 +5,10 @@
 //                                 after packing (src1's for a case with
 //                                 control_src = 1): every case where the swap
 //                                 changes an address must FAIL
+//   ggml_rd_l2 --export=<dir>     write every case's leaves, packed dispatches
+//                                 (GPU kernels, not the serial siblings) and
+//                                 ggml-cpu reference for the WebGPU runner
+//                                 (tests/webgpu); runs no kernel
 //
 // The last line is "RESULT: PASS" or "RESULT: FAIL".
 #include <cfloat>
@@ -12,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -151,6 +156,23 @@ std::string shape(const ggml_tensor *t) {
 
 enum Control { NONE, SWAP_NB };
 
+std::string g_export_dir;
+
+const char *type_name(ggml_type t) {
+	switch (t) {
+		case GGML_TYPE_F32: return "f32";
+		case GGML_TYPE_F16: return "f16";
+		case GGML_TYPE_BF16: return "bf16";
+		case GGML_TYPE_I32: return "i32";
+		default: return "other";
+	}
+}
+
+void write_bin(const std::string &path, const void *data, size_t bytes) {
+	std::ofstream f(path, std::ios::binary);
+	f.write(static_cast<const char *>(data), std::streamsize(bytes));
+}
+
 struct Outcome {
 	bool ok = false;
 	bool swap_noop = true; // the control changed no address in any dispatch
@@ -184,6 +206,7 @@ Outcome run_case(const L2Case &c, Control control) {
 
 	int dispatches = 0;
 	std::string why;
+	std::string exported; // the JSON dispatch list, in export mode
 	for (int i = 0; i < ggml_graph_n_nodes(gf) && why.empty(); ++i) {
 		ggml_tensor *node = ggml_graph_node(gf, i);
 		if (is_layout_only(node->op)) {
@@ -228,11 +251,40 @@ Outcome run_case(const L2Case &c, Control control) {
 				break;
 			}
 		}
+		if (!g_export_dir.empty()) {
+			char d[64];
+			exported += exported.empty() ? "{\"kernel\":" : ",{\"kernel\":";
+			exported += std::to_string(p.kernel) + ",\"groups\":[";
+			std::snprintf(d, sizeof d, "%u,%u,%u],\"words\":[", p.groups[0], p.groups[1], p.groups[2]);
+			exported += d;
+			for (int k = 0; k < kWordsPerSlot; ++k) {
+				exported += std::to_string(w[k]) + (k + 1 < kWordsPerSlot ? "," : "]}");
+			}
+			++dispatches;
+			continue;
+		}
 		if (!run_kernel(p.kernel, w, mem.base, mem.bytes, p.groups)) {
 			why = "no host runner for kernel " + std::to_string(p.kernel);
 			break;
 		}
 		++dispatches;
+	}
+	if (!g_export_dir.empty()) {
+		static int n = 0;
+		const std::string stem = g_export_dir + "/case_" + std::to_string(n++);
+		write_bin(stem + ".mem", snap.data(), snap.size());
+		write_bin(stem + ".ref", ref.data(), ref.size() * sizeof(float));
+		std::ofstream j(stem + ".json");
+		char b[256];
+		std::snprintf(b, sizeof b, "\"out\":{\"off\":%llu,\"type\":\"%s\",\"ne\":[%lld,%lld,%lld,%lld],\"nb\":[%zu,%zu,%zu,%zu]}",
+				(unsigned long long)(static_cast<uint8_t *>(out->data) - mem.base), type_name(out->type), (long long)out->ne[0],
+				(long long)out->ne[1], (long long)out->ne[2], (long long)out->ne[3], out->nb[0], out->nb[1], out->nb[2], out->nb[3]);
+		j << "{\"name\":\"" << c.name << "\",\"max_nmse\":" << c.max_nmse << ",\"value_blind\":" << (c.value_blind ? "true" : "false") << ",\"mem_bytes\":" << snap.size() << ","
+		  << b << ",\"error\":\"" << why << "\",\"dispatches\":[" << exported << "]}\n";
+		o.ok = why.empty() && dispatches > 0;
+		o.line = c.name + (why.empty() ? "" : " error: " + why);
+		ggml_free(ctx);
+		return o;
 	}
 	const std::vector<float> emu = to_float(out);
 	int64_t exact = 0;
@@ -263,18 +315,23 @@ Outcome run_case(const L2Case &c, Control control) {
 } // namespace
 
 int main(int argc, char **argv) {
-	// Kernels with workgroup barriers have no cpp emit (kernels/ggml/gen.sh);
-	// their packers pick the <k>_serial sibling under this switch.
-#ifdef _WIN32
-	_putenv_s("GGML_RD_SERIAL", "1");
-#else
-	setenv("GGML_RD_SERIAL", "1", 1);
-#endif
 	Control control = NONE;
 	for (int i = 1; i < argc; ++i) {
 		if (std::strcmp(argv[i], "--control=swap-nb") == 0) {
 			control = SWAP_NB;
+		} else if (std::strncmp(argv[i], "--export=", 9) == 0) {
+			g_export_dir = argv[i] + 9;
 		}
+	}
+	// Kernels with workgroup barriers have no cpp emit (kernels/ggml/gen.sh);
+	// their packers pick the <k>_serial sibling under this switch. The export
+	// keeps the GPU kernels, which the WebGPU runner runs.
+	if (g_export_dir.empty()) {
+#ifdef _WIN32
+		_putenv_s("GGML_RD_SERIAL", "1");
+#else
+		setenv("GGML_RD_SERIAL", "1", 1);
+#endif
 	}
 	std::vector<L2Case> cases;
 	for (L2Maker m : makers()) {

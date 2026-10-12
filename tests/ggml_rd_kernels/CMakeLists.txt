@@ -63,4 +63,8 @@ target_include_directories(ggml_rd_l2 PRIVATE
 # (MUL_MAT's src0, the row kernels' large cases) and must then fail a case,
 # not the process. Cases that pass never index out of range.
 target_compile_definitions(ggml_rd_l2 PRIVATE SLANG_ENABLE_BOUND_ZERO_INDEX)
-target_link_libraries(ggml_rd_l2 PRIVATE ggml ggml-cpu ggml-base -static)
+if(APPLE)
+	target_link_libraries(ggml_rd_l2 PRIVATE ggml ggml-cpu ggml-base)
+else()
+	target_link_libraries(ggml_rd_l2 PRIVATE ggml ggml-cpu ggml-base -static)
+endif()
