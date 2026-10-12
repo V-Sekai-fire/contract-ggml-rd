@@ -58,6 +58,16 @@ bool serial_kernels() {
 	return e != nullptr && std::atoi(e) != 0;
 }
 
+static uint32_t g_workgroup_limit = 0xFFFFFFFFu;
+
+void set_workgroup_limit(uint32_t bytes) {
+	g_workgroup_limit = bytes;
+}
+
+uint32_t workgroup_limit() {
+	return g_workgroup_limit;
+}
+
 int kernel_index(const char *name) {
 	for (uint32_t i = 0; i < kKernelCount; ++i) {
 		if (std::strcmp(kKernels[i].name, name) == 0) {

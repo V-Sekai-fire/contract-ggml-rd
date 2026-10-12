@@ -49,6 +49,8 @@ public:
 	void free_rid(::RID rid);
 	void forget(::RID rid);
 	std::string device_name();
+	// The device's maxComputeWorkgroupStorageSize.
+	uint32_t workgroup_storage_max();
 	void capture_timestamp(const std::string &) {}
 	int64_t timestamps_count() { return 0; }
 	int64_t timestamp_gpu_ns(int64_t) { return -1; }

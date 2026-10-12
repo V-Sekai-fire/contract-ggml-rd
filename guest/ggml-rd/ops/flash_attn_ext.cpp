@@ -98,7 +98,11 @@ bool pack_fa(Pack &p) {
 	const ggml_tensor *q = op->src[0];
 	const ggml_tensor *k = op->src[1];
 	const ggml_tensor *v = op->src[2];
-	const bool serial = serial_kernels();
+	// The tiled kernel's group memory: Q (16 x d+1), K (32 x d+1), V (32 x d)
+	// and S (16 x 33) floats, lean/Ggml/SlangCodegen/FlashAttn.lean.
+	const uint64_t d = uint64_t(q->ne[0]);
+	const uint64_t tiled_bytes = 4 * (kRows * (d + 1) + 32 * (d + 1) + 32 * d + kRows * 33);
+	const bool serial = serial_kernels() || tiled_bytes > workgroup_limit();
 	std::string name = std::string("flash_attn_ext_") + (k->type == GGML_TYPE_F16 ? "f16" : "f32") + "_d" +
 			std::to_string(q->ne[0]) + (serial ? "_serial" : "");
 	p.kernel = kernel_index(name.c_str());

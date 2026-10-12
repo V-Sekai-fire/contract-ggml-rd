@@ -16,6 +16,7 @@ EM_JS(char *, js_take_error, (), {
 	return stringToNewUTF8(e);
 });
 EM_JS(char *, js_name, (), { return stringToNewUTF8(RD.name()); });
+EM_JS(double, js_wg_max, (), { return RD.device.limits.maxComputeWorkgroupStorageSize; });
 EM_JS(int, js_shader, (const uint8_t *src, size_t bytes), {
 	const code = UTF8ToString(src, bytes);
 	return RD.put(RD.device.createShaderModule({ code }));
@@ -23,6 +24,10 @@ EM_JS(int, js_shader, (const uint8_t *src, size_t bytes), {
 EM_ASYNC_JS(int, js_pipeline, (int shader), { return await RD.pipeline(shader); });
 EM_JS(int, js_storage, (double bytes), {
 	const size = Math.max(4, Math.ceil(bytes / 4) * 4);
+	if (size > RD.device.limits.maxBufferSize) {
+		RD.errors.push(`storage buffer of ${size} bytes is over maxBufferSize ${RD.device.limits.maxBufferSize}`);
+		return 0;
+	}
 	return RD.put(RD.device.createBuffer({ size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST }));
 });
 EM_JS(int, js_uniform, (double bytes, const void *data), {
@@ -137,7 +142,11 @@ void Device::close() {
 }
 
 ::RID Device::storage_buffer_empty(size_t bytes, bool) {
-	return ::RID{ js_storage(double(bytes)) }; // WebGPU zero-fills new buffers
+	::RID r{ js_storage(double(bytes)) }; // WebGPU zero-fills new buffers
+	if (r.index == 0) {
+		fail("storage_buffer");
+	}
+	return r;
 }
 
 ::RID Device::uniform_buffer(size_t bytes, const void *data) {
@@ -186,6 +195,10 @@ std::string Device::device_name() {
 	std::string s(n);
 	std::free(n);
 	return s;
+}
+
+uint32_t Device::workgroup_storage_max() {
+	return uint32_t(js_wg_max());
 }
 
 bool Device::list_begin() {

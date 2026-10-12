@@ -23,6 +23,8 @@
 // at 2, around each dispatch's packing and recording).
 #include "rd_internal.h"
 
+#include <algorithm>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -143,6 +145,12 @@ ggml_status graph_compute(ggml_cgraph *g) {
 	// The fallback runs every kernel's cpp emit, and the kernels with group
 	// memory have none: their packers must pick the serial siblings.
 	set_serial_kernels(cpu);
+#ifdef GGML_RD_WEB
+	if (!cpu) {
+		const int wl = env_int("GGML_RD_WG_LIMIT"); // a gate's override of the device's limit
+		set_workgroup_limit(wl > 0 ? uint32_t(wl) : c.dev->workgroup_storage_max());
+	}
+#endif
 
 	const bool barrier_all = env_int("GGML_RD_BARRIER_ALL") != 0;
 	const int fault = env_int("GGML_RD_FAULT");
@@ -332,15 +340,19 @@ ggml_status graph_compute(ggml_cgraph *g) {
 		}
 	}
 #ifdef GGML_RD_WEB
-	// Scratch for the copied sources: one region per copy, in graph order.
+	// Scratch for the copied sources. A copy feeds only the dispatch after it,
+	// and WebGPU finishes a pass before the copy that follows it, so every
+	// dispatch reuses the scratch from offset 0.
 	uint64_t scratch_bytes = 0;
 	for (Dispatch &dp : ds) {
+		uint64_t at = 0;
 		for (WebSlot &sl : dp.slot) {
 			if (sl.src_rid.index != 0) {
-				sl.start = scratch_bytes;
-				scratch_bytes += (sl.size + kBindAlign - 1) & ~(kBindAlign - 1);
+				sl.start = at;
+				at += (sl.size + kBindAlign - 1) & ~(kBindAlign - 1);
 			}
 		}
+		scratch_bytes = std::max(scratch_bytes, at);
 	}
 	::RID scratch = scratch_bytes ? scratch_buffer(scratch_bytes) : ::RID();
 	if (scratch_bytes && scratch.index == 0) {
