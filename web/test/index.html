@@ -10,6 +10,12 @@
 // ?graphs=qwen+sconv picks nets (default: the test's own set).
 const graphs = new URLSearchParams(location.search).get('graphs') ?? '';
 const log = document.getElementById('log'), v = document.getElementById('v');
+if (!navigator.gpu) {
+  v.className = 'no';
+  v.textContent = 'This page needs WebGPU (Chrome or Edge 113+, Safari 26+). It runs no CPU fallback.';
+  window.__done = { pass: false, error: 'no WebGPU' };
+  throw new Error('no WebGPU');
+}
 const w = new Worker('./worker.mjs', { type: 'module' });
 const t0 = performance.now();
 let frames = 0;
