@@ -74,6 +74,17 @@ def tileKeys : Nat := 32
 /-- Threads per work group of the serial sibling. -/
 def serialThreadgroup : Nat := 64
 
+/-- A tiled kernel's tile: query rows per work group and keys per K/V tile
+    (lanes stay 8). `big` is the census kernel; `small` fits WebGPU's default
+    16384 bytes of workgroup memory at D = 128 (the `_t8` kernels). -/
+structure Tile where
+  rows : Nat
+  keys : Nat
+
+def Tile.big : Tile := ⟨FlashAttn.rows, FlashAttn.tileKeys⟩
+def Tile.small : Tile := ⟨8, 8⟩
+def Tile.threads (tl : Tile) : Nat := tl.rows * lanes
+
 /-- Derived words (the op's own, 55-63). -/
 def wRk2 : Nat := 55
 def wRk3 : Nat := 56
@@ -142,18 +153,25 @@ def qOff (c : SlangExpr) : SlangExpr := add (v "qb") c
 
 /-! ## The tiled kernel -/
 
-def tiledShared (d : Nat) : List SlangGroupSharedDecl :=
-  [ { name := "Qs", elemType := fT, dims := [rows, d + 1] }
-  , { name := "Ks", elemType := fT, dims := [tileKeys, d + 1] }
-  , { name := "Vs", elemType := fT, dims := [tileKeys, d] }
-  , { name := "Ss", elemType := fT, dims := [rows, tileKeys + 1] } ]
+def tiledShared (tl : Tile) (d : Nat) : List SlangGroupSharedDecl :=
+  [ { name := "Qs", elemType := fT, dims := [tl.rows, d + 1] }
+  , { name := "Ks", elemType := fT, dims := [tl.keys, d + 1] }
+  , { name := "Vs", elemType := fT, dims := [tl.keys, d] }
+  , { name := "Ss", elemType := fT, dims := [tl.rows, tl.keys + 1] } ]
 
 /-- Groupshared bytes of the tiled kernel. -/
-def tiledSharedBytes (d : Nat) : Nat :=
-  4 * (rows * (d + 1) + tileKeys * (d + 1) + tileKeys * d + rows * (tileKeys + 1))
+def tiledSharedBytes (tl : Tile) (d : Nat) : Nat :=
+  4 * (tl.rows * (d + 1) + tl.keys * (d + 1) + tl.keys * d + tl.rows * (tl.keys + 1))
 
-example : tiledSharedBytes 128 = 43264 := by native_decide
-example : tiledSharedBytes 128 ≤ 49152 := by native_decide
+example : tiledSharedBytes .big 128 = 43264 := by native_decide
+example : tiledSharedBytes .big 128 ≤ 49152 := by native_decide
+/-- The small tile fits WebGPU's default workgroup memory at both D. -/
+example : tiledSharedBytes .small 128 = 12640 := by native_decide
+example : tiledSharedBytes .small 128 ≤ 16384 := by native_decide
+example : tiledSharedBytes .small 64 ≤ 16384 := by native_decide
+/-- Every thread loads the same number of K/V elements per tile. -/
+example : [Tile.big, Tile.small].all (fun tl => [64, 128].all (fun d =>
+    (tl.keys * d) % tl.threads == 0 && tl.keys % lanes == 0)) := by native_decide
 
 private def barrier : SlangStmt := .expr (.call "GroupMemoryBarrierWithGroupSync" [])
 
@@ -165,11 +183,15 @@ private def colOf (i : Nat) : SlangExpr :=
 /-- `d<q>`, the score of key `l + 8 q` of this lane. -/
 private def dk (q : Nat) : String := "d" ++ toString q
 private def keyOf (q : Nat) : SlangExpr := colOf q
-private def keysOf : List Nat := List.range (tileKeys / lanes)
+private def keysOf (tl : Tile) : List Nat := List.range (tl.keys / lanes)
 
-def tiledMain (kv : Kv) (d : Nat) : SlangFunctionDecl :=
+def tiledMain (tl : Tile) (kv : Kv) (d : Nat) : SlangFunctionDecl :=
   let nc := d / lanes
   let cols := List.range nc
+  let threadgroup := tl.threads
+  let rows := tl.rows
+  let tileKeys := tl.keys
+  let keysOf := keysOf tl
   { attrs := [.shaderCompute, .numthreads threadgroup 1 1]
   , name := "main"
   , params := [ ⟨"gid", .vec .uint 3, .svGroupId, none, none, .qIn⟩
@@ -252,9 +274,11 @@ def kvScalar : Kv → Scalar
   | .f32 => .float
   | .f16 => .uint
 
-def tiled (kv : Kv) (d : Nat) : SlangShaderModule :=
-  { kernelModule .float (kvScalar kv) (kvScalar kv) .float (helpers kv) (tiledMain kv d) with
-    groupShared := tiledShared d }
+def tiledT (tl : Tile) (kv : Kv) (d : Nat) : SlangShaderModule :=
+  { kernelModule .float (kvScalar kv) (kvScalar kv) .float (helpers kv) (tiledMain tl kv d) with
+    groupShared := tiledShared tl d }
+
+def tiled (kv : Kv) (d : Nat) : SlangShaderModule := tiledT .big kv d
 
 /-! ## The serial sibling -/
 
@@ -320,6 +344,13 @@ def kernels : List (String × SlangShaderModule) :=
   [Kv.f32, Kv.f16].flatMap fun kv =>
     [64, 128].flatMap fun d =>
       [ (name kv d, tiled kv d), (name kv d ++ "_serial", serial kv d) ]
+
+/-- The small-tile kernels (`<name>_t8`): 8 rows x 8 lanes, 8-key tiles, for
+    devices with 16384 bytes of workgroup memory. The host runs their
+    `<name>_serial` sibling (the same sums, 32-key tiles). -/
+def kernelsSmall : List (String × SlangShaderModule) :=
+  [Kv.f32, Kv.f16].flatMap fun kv =>
+    [64, 128].map fun d => (name kv d ++ "_t8", tiledT .small kv d)
 
 example : (kernels.map Prod.fst) =
     [ "flash_attn_ext_f32_d64", "flash_attn_ext_f32_d64_serial"

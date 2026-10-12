@@ -65,7 +65,11 @@ void set_workgroup_limit(uint32_t bytes) {
 }
 
 uint32_t workgroup_limit() {
-	return g_workgroup_limit;
+	// GGML_RD_WG_LIMIT: a gate's stand-in for a device's limit (the host
+	// harness exports the small-tile kernels for WebGPU under it).
+	const char *e = std::getenv("GGML_RD_WG_LIMIT");
+	const long long v = e != nullptr ? std::atoll(e) : 0;
+	return v > 0 ? uint32_t(v) : g_workgroup_limit;
 }
 
 int kernel_index(const char *name) {

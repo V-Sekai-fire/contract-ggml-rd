@@ -121,6 +121,10 @@ static const KernelDesc kKernels[] = {
 	{ "conv_transpose_2d_f32", { 256, 1, 1 } },
 	{ "conv_transpose_2d_f16", { 256, 1, 1 } },
 	{ "cpy_f32_i32", { 256, 1, 1 } },
+	{ "flash_attn_ext_f32_d64_t8", { 64, 1, 1 } },
+	{ "flash_attn_ext_f32_d128_t8", { 64, 1, 1 } },
+	{ "flash_attn_ext_f16_d64_t8", { 64, 1, 1 } },
+	{ "flash_attn_ext_f16_d128_t8", { 64, 1, 1 } },
 };
 static const uint32_t kKernelCount = sizeof(kKernels) / sizeof(kKernels[0]);
 

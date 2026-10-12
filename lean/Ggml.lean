@@ -57,7 +57,7 @@ def kernels : List (String × LeanSlang.SlangShaderModule) :=
   ++ Ggml.SlangCodegen.MulMatTiled.kernels ++ Ggml.SlangCodegen.MulMatVec.kernels
   ++ Ggml.SlangCodegen.MulMatSerial.kernels
   ++ Ggml.SlangCodegen.Conv.kernels
-  ++ Ggml.SlangCodegen.FlashAttn.kernels
+  ++ Ggml.SlangCodegen.FlashAttn.kernels ++ Ggml.SlangCodegen.FlashAttn.kernelsSmall
   ++ Ggml.SlangCodegen.UnaryMath.kernels
   ++ Ggml.SlangCodegen.Reduce.kernels
   ++ Ggml.SlangCodegen.Pool.kernels

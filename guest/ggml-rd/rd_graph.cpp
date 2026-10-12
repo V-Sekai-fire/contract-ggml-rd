@@ -147,8 +147,7 @@ ggml_status graph_compute(ggml_cgraph *g) {
 	set_serial_kernels(cpu);
 #ifdef GGML_RD_WEB
 	if (!cpu) {
-		const int wl = env_int("GGML_RD_WG_LIMIT"); // a gate's override of the device's limit
-		set_workgroup_limit(wl > 0 ? uint32_t(wl) : c.dev->workgroup_storage_max());
+		set_workgroup_limit(c.dev->workgroup_storage_max()); // GGML_RD_WG_LIMIT overrides it (rd_pack.cpp)
 	}
 #endif
 

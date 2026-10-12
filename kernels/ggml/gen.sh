@@ -114,6 +114,9 @@ for k in $KERNELS; do
 	if grep -q '^groupshared \|GroupMemoryBarrierWithGroupSync' "$HERE/slang/$k.slang"; then
 		case " $KERNELS " in
 			*" ${k}_serial "*) rm -f "$HERE/cpp/${k}_emit.cpp"; echo "$k: group-shared, no cpp (the host runs ${k}_serial)"; continue ;;
+			# A small-tile variant (<base>_t8) computes what <base> does: its host stand-in is <base>_serial.
+			*" ${k%_t8}_serial "*) [ "${k%_t8}" != "$k" ] || { echo "error: $k shares group memory and has no host stand-in" >&2; exit 1; }
+				rm -f "$HERE/cpp/${k}_emit.cpp"; echo "$k: group-shared, no cpp (the host runs ${k%_t8}_serial)"; continue ;;
 			*) echo "error: $k shares group memory and has neither a cpp_siblings.txt pair nor a ${k}_serial in kernels.txt" >&2; exit 1 ;;
 		esac
 	fi
