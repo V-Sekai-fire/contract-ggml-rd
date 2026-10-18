@@ -617,14 +617,16 @@ std::string ggml_backend_rd_stats(void) {
 			"graphs=%lld nodes=%lld dispatches=%lld skipped=%lld barriers=%lld failed_graphs=%lld "
 			"last{nodes=%lld dispatches=%lld barriers=%lld skipped=%lld} "
 			"pipelines=%lld set0_created=%lld slots_created=%lld coop_yields=%lld waits=%lld faults=%lld "
-			"params_bytes=%lld set_bytes=%lld get_bytes=%lld copies=%lld clears=%lld buffers_live=%lld bytes_live=%lld",
+			"params_bytes=%lld set_bytes=%lld get_bytes=%lld copies=%lld clears=%lld buffers_live=%lld bytes_live=%lld "
+			"alias_copies=%lld alias_copy_bytes=%lld aliased_dispatches=%lld",
 			(long long)s.graphs, (long long)s.nodes, (long long)s.dispatches, (long long)s.skipped,
 			(long long)s.barriers, (long long)s.failed_graphs, (long long)s.last_nodes,
 			(long long)s.last_dispatches, (long long)s.last_barriers, (long long)s.last_skipped,
 			(long long)s.pipelines, (long long)s.set0_created, (long long)s.slots_created,
 			(long long)s.coop_yields, (long long)s.waits, (long long)s.faults, (long long)s.params_bytes,
 			(long long)s.set_bytes, (long long)s.get_bytes, (long long)s.copies, (long long)s.clears,
-			(long long)s.buffers_live, (long long)s.bytes_live);
+			(long long)s.buffers_live, (long long)s.bytes_live, (long long)s.alias_copies,
+			(long long)s.alias_copy_bytes, (long long)s.aliased_dispatches);
 	return b;
 }
 

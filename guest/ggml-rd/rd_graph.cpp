@@ -64,6 +64,14 @@ struct Dispatch {
 	const ggml_tensor *node;
 #ifdef GGML_RD_WEB
 	WebSlot slot[4]; // s0, s1, s2, dst
+#else
+	// A source that shares its buffer with another binding is copied into copy slot s's scratch
+	// buffer before the dispatch (WebGPU refuses one buffer in two writable slots).
+	struct Copy {
+		const ggml_tensor *t = nullptr; // null: bound in place
+		::RID src;
+		uint64_t lo = 0, size = 0; // the copied bytes [lo, lo + size) of src
+	} copy[3];
 #endif
 };
 
@@ -90,6 +98,25 @@ bool rd_offset(const ggml_tensor *t, void *, uint64_t *off) {
 	*off = byte_offset(t, b);
 	return true;
 }
+
+#ifndef GGML_RD_WEB
+// The tensor's offset in its buffer, or in its copy slot's scratch when it is copied.
+bool copy_offset(const ggml_tensor *t, void *user, uint64_t *off) {
+	const Dispatch::Copy *cp = static_cast<const Dispatch::Copy *>(user);
+	const Buffer *b = buffer_of(t);
+	if (b == nullptr) {
+		return false;
+	}
+	for (int s = 0; s < 3; ++s) {
+		if (cp[s].t == t) {
+			*off = byte_offset(t, b) - cp[s].lo;
+			return true;
+		}
+	}
+	*off = byte_offset(t, b);
+	return true;
+}
+#endif
 
 #ifdef GGML_RD_WEB
 constexpr uint64_t kBindAlign = 256; // WebGPU's minStorageBufferOffsetAlignment default
@@ -149,6 +176,10 @@ ggml_status graph_compute(ggml_cgraph *g) {
 	const bool barrier_all = env_int("GGML_RD_BARRIER_ALL") != 0;
 	const int fault = env_int("GGML_RD_FAULT");
 	const int drop_barrier = env_int("GGML_RD_DROP_BARRIER");
+#ifndef GGML_RD_WEB
+	// The control: GGML_RD_NO_ALIAS_COPY=1 binds shared buffers in place, as before.
+	const bool copy_off = env_int("GGML_RD_NO_ALIAS_COPY") != 0;
+#endif
 	const char *pe = std::getenv("GGML_RD_PROFILE");
 	const int prof = pe != nullptr ? std::atoi(pe) : c.profile_level;
 	ggml_rd_profile &pf = c.profile;
@@ -209,7 +240,28 @@ ggml_status graph_compute(ggml_cgraph *g) {
 		}
 		if (!fill_standard(w, node, cpu ? rd_offset : web_offset, cpu ? nullptr : dp.slot, &why)) {
 #else
-		if (!fill_standard(w, node, rd_offset, nullptr, &why)) {
+		if (!cpu && !copy_off) {
+			// Copy every source whose buffer another binding also names (dst, or an earlier
+			// source left in place). A tensor bound twice is copied at its second binding.
+			const Buffer *dbuf = buffer_of(node);
+			for (int s = 0; s < 3; ++s) {
+				const ggml_tensor *src = node->src[s];
+				const Buffer *sb = src ? buffer_of(src) : nullptr;
+				if (sb == nullptr || dbuf == nullptr) {
+					continue;
+				}
+				bool shared = sb->rid.index == dbuf->rid.index;
+				for (int t = 0; t < s && !shared; ++t) {
+					const Buffer *tb = node->src[t] ? buffer_of(node->src[t]) : nullptr;
+					shared = tb != nullptr && dp.copy[t].t == nullptr && tb->rid.index == sb->rid.index;
+				}
+				if (shared) {
+					const Range r = range_of(src, sb);
+					dp.copy[s] = Dispatch::Copy{ src, sb->rid, r.lo, r.hi - r.lo };
+				}
+			}
+		}
+		if (!fill_standard(w, node, cpu ? rd_offset : copy_offset, cpu ? nullptr : dp.copy, &why)) {
 #endif
 			return fail_graph(why + ": " + node_desc(node));
 		}
@@ -425,6 +477,42 @@ ggml_status graph_compute(ggml_cgraph *g) {
 		}
 	}
 #else
+	uint64_t copy_need[3] = {};
+	for (const Dispatch &dp : ds) {
+		for (int s = 0; s < 3; ++s) {
+			copy_need[s] = std::max(copy_need[s], dp.copy[s].t ? dp.copy[s].size : 0);
+		}
+	}
+	::RID copy_rid[3];
+	for (int s = 0; s < 3; ++s) {
+		if (copy_need[s] != 0) {
+			copy_rid[s] = copy_slot_buffer(s, copy_need[s]);
+			if (copy_rid[s].index == 0) {
+				return fail_graph(c.last_error);
+			}
+		}
+	}
+	int64_t still_aliased = 0, copies = 0;
+	for (Dispatch &dp : ds) {
+		for (int s = 0; s < 3; ++s) {
+			if (dp.copy[s].t != nullptr) {
+				dp.bind[s] = copy_rid[s];
+				++copies;
+				c.st.alias_copy_bytes += int64_t(dp.copy[s].size);
+			}
+		}
+		for (int a = 0; a < 4; ++a) {
+			for (int b2 = 0; b2 < a; ++b2) {
+				if (dp.bind[a].index == dp.bind[b2].index) {
+					++still_aliased;
+					a = 4;
+					break;
+				}
+			}
+		}
+	}
+	c.st.alias_copies += copies;
+	c.st.aliased_dispatches += still_aliased;
 	for (Dispatch &dp : ds) {
 		dp.set0 = tensor_set(params, dp.bind[0], dp.bind[1], dp.bind[2], dp.bind[3]);
 		if (dp.set0.index == 0) {
@@ -491,6 +579,32 @@ ggml_status graph_compute(ggml_cgraph *g) {
 				bound_kernel = -1;
 				bound_set0 = 0;
 			}
+		}
+#else
+		bool copied = false;
+		for (int s = 0; s < 3; ++s) {
+			const Dispatch::Copy &cp = dp.copy[s];
+			if (cp.t == nullptr) {
+				continue;
+			}
+			if (!copied) {
+				d.list_end(); // Godot records buffer_copy only outside a compute list
+				copied = true;
+			}
+			if (!d.buffer_copy(cp.src, dp.bind[s], size_t(cp.size), size_t(cp.lo), 0)) {
+				return fail_graph("copy for " + node_desc(dp.node) + ": " + d.error());
+			}
+		}
+		if (copied) {
+			d.list_begin();
+			bound_kernel = -1;
+			bound_set0 = 0;
+			seg_reads.clear();
+			seg_writes.clear();
+			for (int r = 0; r < dp.nreads; ++r) {
+				seg_reads.push_back(dp.reads[r]);
+			}
+			seg_writes.push_back(dp.write);
 		}
 #endif
 		if (dp.kernel != bound_kernel) {
