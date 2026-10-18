@@ -1,5 +1,6 @@
 import LeanSlang
 import Ggml.SlangCodegen.Common
+import Ggml.SlangCodegen.Conv
 
 /-!
 # `Ggml.SlangCodegen.FlashAttn` — ggml FLASH_ATTN_EXT, no mask (family K8)
@@ -108,7 +109,7 @@ def ldKv (kv : Kv) (buf : String) (e : SlangExpr) : SlangExpr :=
 def qAsKv (kv : Kv) (x : SlangExpr) : SlangExpr :=
   match kv with
   | .f32 => x
-  | .f16 => .call "f16tof32" [.call "f32tof16" [x]]
+  | .f16 => .call "f16_bits_to_f32" [.call "f32_to_f16" [x]]
 
 /-- The words both kernels start from: Lk, the K/V head and batch of
     (h, b), the scale and the softcap, and the element offsets of Q's row
@@ -251,7 +252,7 @@ def tiledMain (kv : Kv) (d : Nat) : SlangFunctionDecl :=
 def helpers (kv : Kv) : List SlangFunctionDecl :=
   match kv with
   | .f32 => [fnPw, fnPf, fnOff4]
-  | .f16 => [fnPw, fnPf, fnOff4, fnLdF16 "s1", fnLdF16 "s2"]
+  | .f16 => [fnPw, fnPf, fnOff4, fnLdF16 "s1", fnLdF16 "s2", Conv.fnF32ToF16, fnF16BitsToF32]
 
 def kvScalar : Kv → Scalar
   | .f32 => .float
@@ -790,18 +791,28 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
 example : LeanSlang.emitFunction (fnLdF16 "s1") = "float ld_f16_s1(uint e) {
   uint w = s1[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
-  return f16tof32(h);
+  uint s = ((h & 32768u) << 16u);
+  uint x = (h & 31744u);
+  uint b = (((h & 32767u) << 13u) + 939524096u);
+  if ((x == 31744u)) {
+    b = (b + 939524096u);
+  }
+  if ((x == 0u)) {
+    b = asuint((asfloat(b) - asfloat(947912704u)));
+  }
+  return asfloat((b | s));
 }" := by native_decide
 
 /-- The f16 kernel's text from the f32 kernel's. -/
 def toF16 (t : String) : String :=
   let off := "(i3 * pw((w + 7u))));\n}"
-  let ld := "\n\n" ++ LeanSlang.emitFunction (fnLdF16 "s1") ++ "\n\n" ++ LeanSlang.emitFunction (fnLdF16 "s2")
+  let ld := "\n\n" ++ LeanSlang.emitFunction (fnLdF16 "s1") ++ "\n\n" ++ LeanSlang.emitFunction (fnLdF16 "s2") ++
+    "\n\n" ++ LeanSlang.emitFunction Conv.fnF32ToF16 ++ "\n\n" ++ LeanSlang.emitFunction fnF16BitsToF32
   ((((((t.replace "RWStructuredBuffer<float> s1;" "RWStructuredBuffer<uint> s1;").replace
     "RWStructuredBuffer<float> s2;" "RWStructuredBuffer<uint> s2;").replace off (off ++ ld)).replace
     "s1[((kb + (key * kn)) + c)]" "ld_f16_s1(((kb + (key * kn)) + c))").replace
     "s2[((vb + (key * vn)) + c)]" "ld_f16_s2(((vb + (key * vn)) + c))").replace
-    "s0[(qb + c)]" "f16tof32(f32tof16(s0[(qb + c)]))")
+    "s0[(qb + c)]" "f16_bits_to_f32(f32_to_f16(s0[(qb + c)]))")
 
 example : LeanSlang.emit (tiled .f32 64) = expectedTiledF32D64 := by native_decide
 example : LeanSlang.emit (tiled .f32 128) = expectedTiledF32D128 := by native_decide

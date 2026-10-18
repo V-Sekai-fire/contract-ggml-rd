@@ -4356,6 +4356,201 @@ static uint32_t off4_0(uint32_t w_0, uint32_t i0_0, uint32_t i1_0, uint32_t i2_0
     return _S8 + i3_0 * _S9;
 }
 
+
+#line 63
+static uint32_t f32_to_f16_0(float f_0)
+{
+
+#line 64
+    uint32_t u_0 = (F32_asuint((f_0)));
+    uint32_t s_0 = (u_0 >> 16U) & 32768U;
+    uint32_t a_0 = u_0 & 2147483647U;
+    if(a_0 > 2139095040U)
+    {
+
+#line 68
+        return s_0 | 32256U;
+    }
+    if(a_0 >= 1199566848U)
+    {
+
+#line 71
+        return s_0 | 31744U;
+    }
+
+#line 71
+    bool _S10;
+
+#line 71
+    uint32_t h_0;
+
+    if(a_0 >= 947912704U)
+    {
+
+#line 74
+        uint32_t h_1 = (a_0 - 939524096U) >> 13U;
+        uint32_t r_0 = a_0 & 8191U;
+        if(r_0 > 4096U)
+        {
+
+#line 76
+            _S10 = true;
+
+#line 76
+        }
+        else
+        {
+
+#line 76
+            if(r_0 == 4096U)
+            {
+
+#line 76
+                _S10 = (h_1 & 1U) != 0U;
+
+#line 76
+            }
+            else
+            {
+
+#line 76
+                _S10 = false;
+
+#line 76
+            }
+
+#line 76
+        }
+
+#line 76
+        if(_S10)
+        {
+
+#line 76
+            h_0 = h_1 + 1U;
+
+#line 76
+        }
+        else
+        {
+
+#line 76
+            h_0 = h_1;
+
+#line 76
+        }
+
+
+        return s_0 | h_0;
+    }
+    if(a_0 < 855638017U)
+    {
+
+#line 82
+        return s_0;
+    }
+    uint32_t m_0 = (a_0 & 8388607U) | 8388608U;
+    uint32_t sh_0 = 126U - (a_0 >> 23U);
+    uint32_t h_2 = m_0 >> sh_0;
+    uint32_t r_1 = m_0 & ((1U << sh_0) - 1U);
+    uint32_t hw_0 = 1U << (sh_0 - 1U);
+    if(r_1 > hw_0)
+    {
+
+#line 89
+        _S10 = true;
+
+#line 89
+    }
+    else
+    {
+
+#line 89
+        if(r_1 == hw_0)
+        {
+
+#line 89
+            _S10 = (h_2 & 1U) != 0U;
+
+#line 89
+        }
+        else
+        {
+
+#line 89
+            _S10 = false;
+
+#line 89
+        }
+
+#line 89
+    }
+
+#line 89
+    if(_S10)
+    {
+
+#line 89
+        h_0 = h_2 + 1U;
+
+#line 89
+    }
+    else
+    {
+
+#line 89
+        h_0 = h_2;
+
+#line 89
+    }
+
+
+    return s_0 | h_0;
+}
+
+static float f16_bits_to_f32_0(uint32_t h_3)
+{
+
+#line 96
+    uint32_t s_1 = (h_3 & 32768U) << 16U;
+    uint32_t x_0 = h_3 & 31744U;
+    uint32_t b_0 = ((h_3 & 32767U) << 13U) + 939524096U;
+
+#line 98
+    uint32_t b_1;
+    if(x_0 == 31744U)
+    {
+
+#line 99
+        b_1 = b_0 + 939524096U;
+
+#line 99
+    }
+    else
+    {
+
+#line 99
+        b_1 = b_0;
+
+#line 99
+    }
+
+
+    if(x_0 == 0U)
+    {
+
+#line 102
+        b_1 = (F32_asuint(((U32_asfloat((b_1))) - (U32_asfloat((947912704U))))));
+
+#line 102
+    }
+
+
+    return (U32_asfloat((b_1 | s_1)));
+}
+
+
+#line 33
 static float ld_f16_s1_0(uint32_t e_0, KernelContext_0 * kernelContext_3)
 {
 
@@ -4363,12 +4558,12 @@ static float ld_f16_s1_0(uint32_t e_0, KernelContext_0 * kernelContext_3)
     uint32_t w_1 = *(&(kernelContext_3->globalParams_0->s1_0)[e_0 >> 1U]);
 
 #line 34
-    uint32_t h_0;
+    uint32_t h_4;
     if((e_0 & 1U) != 0U)
     {
 
 #line 35
-        h_0 = w_1 >> 16U;
+        h_4 = w_1 >> 16U;
 
 #line 35
     }
@@ -4376,370 +4571,439 @@ static float ld_f16_s1_0(uint32_t e_0, KernelContext_0 * kernelContext_3)
     {
 
 #line 35
-        h_0 = w_1 & 65535U;
+        h_4 = w_1 & 65535U;
 
 #line 35
     }
-    return (f16tof32((h_0)));
+    uint32_t s_2 = (h_4 & 32768U) << 16U;
+    uint32_t x_1 = h_4 & 31744U;
+    uint32_t b_2 = ((h_4 & 32767U) << 13U) + 939524096U;
+
+#line 38
+    uint32_t b_3;
+    if(x_1 == 31744U)
+    {
+
+#line 39
+        b_3 = b_2 + 939524096U;
+
+#line 39
+    }
+    else
+    {
+
+#line 39
+        b_3 = b_2;
+
+#line 39
+    }
+
+
+    if(x_1 == 0U)
+    {
+
+#line 42
+        b_3 = (F32_asuint(((U32_asfloat((b_3))) - (U32_asfloat((947912704U))))));
+
+#line 42
+    }
+
+
+    return (U32_asfloat((b_3 | s_2)));
 }
 
 static float ld_f16_s2_0(uint32_t e_1, KernelContext_0 * kernelContext_4)
 {
 
-#line 40
+#line 49
     uint32_t w_2 = *(&(kernelContext_4->globalParams_0->s2_0)[e_1 >> 1U]);
 
-#line 40
-    uint32_t h_1;
+#line 49
+    uint32_t h_5;
     if((e_1 & 1U) != 0U)
     {
 
-#line 41
-        h_1 = w_2 >> 16U;
+#line 50
+        h_5 = w_2 >> 16U;
 
-#line 41
+#line 50
     }
     else
     {
 
-#line 41
-        h_1 = w_2 & 65535U;
+#line 50
+        h_5 = w_2 & 65535U;
 
-#line 41
+#line 50
     }
-    return (f16tof32((h_1)));
+    uint32_t s_3 = (h_5 & 32768U) << 16U;
+    uint32_t x_2 = h_5 & 31744U;
+    uint32_t b_4 = ((h_5 & 32767U) << 13U) + 939524096U;
+
+#line 53
+    uint32_t b_5;
+    if(x_2 == 31744U)
+    {
+
+#line 54
+        b_5 = b_4 + 939524096U;
+
+#line 54
+    }
+    else
+    {
+
+#line 54
+        b_5 = b_4;
+
+#line 54
+    }
+
+
+    if(x_2 == 0U)
+    {
+
+#line 57
+        b_5 = (F32_asuint(((U32_asfloat((b_5))) - (U32_asfloat((947912704U))))));
+
+#line 57
+    }
+
+
+    return (U32_asfloat((b_5 | s_3)));
 }
 
 
-void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
+#line 109
+void _main_0(void* _S11, void* entryPointParams_0, void* globalParams_1)
 {
 
-#line 46
-    float s_0;
+#line 109
+    float s_4;
 
-#line 46
-    float s_1;
+#line 109
+    float s_5;
 
-#line 46
-    ComputeThreadVaryingInput * _S11 = (slang_bit_cast<ComputeThreadVaryingInput *>(_S10));
+#line 109
+    ComputeThreadVaryingInput * _S12 = (slang_bit_cast<ComputeThreadVaryingInput *>(_S11));
 
-#line 46
+#line 109
     KernelContext_0 kernelContext_5;
 
-#line 46
+#line 109
     (&kernelContext_5)->globalParams_0 = (slang_bit_cast<GlobalParams_0*>(globalParams_1));
 
-#line 46
-    Vector<uint32_t, 3>  _S12 = _S11->groupID;
+#line 109
+    Vector<uint32_t, 3>  _S13 = _S12->groupID;
 
-#line 46
-    Vector<uint32_t, 3>  _S13 = _S11->groupThreadID;
-    uint32_t _S14 = _S11->groupID.y;
+#line 109
+    Vector<uint32_t, 3>  _S14 = _S12->groupThreadID;
+    uint32_t _S15 = _S12->groupID.y;
 
-#line 47
-    uint32_t _S15 = pw_0(54U, &kernelContext_5);
+#line 110
+    uint32_t _S16 = pw_0(54U, &kernelContext_5);
 
-#line 47
-    uint32_t e_2 = (_S14 * _S15 + _S12.x) * 64U + _S13.x;
+#line 110
+    uint32_t e_2 = (_S15 * _S16 + _S13.x) * 64U + _S14.x;
 
-#line 47
-    uint32_t _S16 = pw_0(53U, &kernelContext_5);
-    if(e_2 >= _S16)
+#line 110
+    uint32_t _S17 = pw_0(53U, &kernelContext_5);
+    if(e_2 >= _S17)
     {
 
-#line 49
+#line 112
         return;
     }
 
-#line 49
-    uint32_t _S17 = pw_0(11U, &kernelContext_5);
+#line 112
+    uint32_t _S18 = pw_0(11U, &kernelContext_5);
 
 
-    uint32_t iq_0 = e_2 % _S17;
-    uint32_t rr_0 = e_2 / _S17;
+    uint32_t iq_0 = e_2 % _S18;
+    uint32_t rr_0 = e_2 / _S18;
 
-#line 53
-    uint32_t _S18 = pw_0(12U, &kernelContext_5);
-    uint32_t h_2 = rr_0 % _S18;
-
-#line 54
+#line 116
     uint32_t _S19 = pw_0(12U, &kernelContext_5);
-    uint32_t b_0 = rr_0 / _S19;
+    uint32_t h_6 = rr_0 % _S19;
 
-#line 55
-    uint32_t _S20 = pw_0(20U, &kernelContext_5);
+#line 117
+    uint32_t _S20 = pw_0(12U, &kernelContext_5);
+    uint32_t b_6 = rr_0 / _S20;
 
-#line 55
-    uint32_t _S21 = pw_0(55U, &kernelContext_5);
+#line 118
+    uint32_t _S21 = pw_0(20U, &kernelContext_5);
 
-    uint32_t hk_0 = h_2 / _S21;
+#line 118
+    uint32_t _S22 = pw_0(55U, &kernelContext_5);
 
-#line 57
-    uint32_t _S22 = pw_0(56U, &kernelContext_5);
-    uint32_t bk_0 = b_0 / _S22;
+    uint32_t hk_0 = h_6 / _S22;
 
-#line 58
-    uint32_t _S23 = pw_0(57U, &kernelContext_5);
-    uint32_t hv_0 = h_2 / _S23;
+#line 120
+    uint32_t _S23 = pw_0(56U, &kernelContext_5);
+    uint32_t bk_0 = b_6 / _S23;
 
-#line 59
-    uint32_t _S24 = pw_0(58U, &kernelContext_5);
-    uint32_t bv_0 = b_0 / _S24;
+#line 121
+    uint32_t _S24 = pw_0(57U, &kernelContext_5);
+    uint32_t hv_0 = h_6 / _S24;
 
-#line 60
-    float _S25 = pf_0(59U, &kernelContext_5);
+#line 122
+    uint32_t _S25 = pw_0(58U, &kernelContext_5);
+    uint32_t bv_0 = b_6 / _S25;
 
-#line 60
-    float _S26 = pf_0(60U, &kernelContext_5);
+#line 123
+    float _S26 = pf_0(59U, &kernelContext_5);
 
-#line 60
-    uint32_t _S27 = off4_0(10U, 0U, iq_0, h_2, b_0, &kernelContext_5);
+#line 123
+    float _S27 = pf_0(60U, &kernelContext_5);
 
-#line 60
-    uint32_t _S28 = off4_0(19U, 0U, 0U, hk_0, bk_0, &kernelContext_5);
+#line 123
+    uint32_t _S28 = off4_0(10U, 0U, iq_0, h_6, b_6, &kernelContext_5);
 
-#line 60
-    uint32_t _S29 = pw_0(24U, &kernelContext_5);
+#line 123
+    uint32_t _S29 = off4_0(19U, 0U, 0U, hk_0, bk_0, &kernelContext_5);
 
-#line 60
-    uint32_t _S30 = off4_0(28U, 0U, 0U, hv_0, bv_0, &kernelContext_5);
+#line 123
+    uint32_t _S30 = pw_0(24U, &kernelContext_5);
 
-#line 60
-    uint32_t _S31 = pw_0(33U, &kernelContext_5);
+#line 123
+    uint32_t _S31 = off4_0(28U, 0U, 0U, hv_0, bv_0, &kernelContext_5);
 
-#line 68
+#line 123
+    uint32_t _S32 = pw_0(33U, &kernelContext_5);
+
+#line 131
     FixedArray<float, 128>  qv_0;
     FixedArray<float, 128>  acc_0;
     FixedArray<float, 8>  sc_0;
 
-#line 70
+#line 133
     uint32_t c_0 = 0U;
     for(;;)
     {
 
-#line 71
+#line 134
         if(c_0 < 128U)
         {
         }
         else
         {
 
-#line 71
+#line 134
             break;
         }
 
-#line 72
-        qv_0[c_0] = (f16tof32(((f32tof16((*(&((&kernelContext_5)->globalParams_0->s0_0)[_S27 + c_0])))))));
+#line 135
+        qv_0[c_0] = f16_bits_to_f32_0(f32_to_f16_0(*(&((&kernelContext_5)->globalParams_0->s0_0)[_S28 + c_0])));
         acc_0[c_0] = 0.0f;
 
-#line 71
+#line 134
         c_0 = c_0 + 1U;
 
-#line 71
+#line 134
     }
 
-#line 71
-    uint32_t _S32 = pw_0(0U, &kernelContext_5);
+#line 134
+    uint32_t _S33 = pw_0(0U, &kernelContext_5);
 
-#line 77
-    uint32_t _S33 = (_S20 + 7U) / 8U;
+#line 140
+    uint32_t _S34 = (_S21 + 7U) / 8U;
 
-#line 77
-    float m_0 = (U32_asfloat((4286578688U | (_S32 & 0U))));
+#line 140
+    float m_1 = (U32_asfloat((4286578688U | (_S33 & 0U))));
 
-#line 77
+#line 140
     float ls_0 = 0.0f;
 
-#line 77
+#line 140
     uint32_t tt_0 = 0U;
     for(;;)
     {
 
-#line 78
-        if(tt_0 < _S33)
+#line 141
+        if(tt_0 < _S34)
         {
         }
         else
         {
 
-#line 78
+#line 141
             break;
         }
 
-#line 79
-        uint32_t _S34 = tt_0 * 8U;
+#line 142
+        uint32_t _S35 = tt_0 * 8U;
 
-#line 79
+#line 142
         uint32_t j_0 = 0U;
         for(;;)
         {
 
-#line 80
+#line 143
             if(j_0 < 8U)
             {
             }
             else
             {
 
-#line 80
+#line 143
                 break;
             }
 
-#line 81
-            uint32_t key_0 = _S34 + j_0;
+#line 144
+            uint32_t key_0 = _S35 + j_0;
 
-#line 81
-            uint32_t _S35 = pw_0(0U, &kernelContext_5);
-            float _S36 = (U32_asfloat((4286578688U | (_S35 & 0U))));
-            if(key_0 < _S20)
+#line 144
+            uint32_t _S36 = pw_0(0U, &kernelContext_5);
+            float _S37 = (U32_asfloat((4286578688U | (_S36 & 0U))));
+            if(key_0 < _S21)
             {
 
-#line 83
-                s_0 = 0.0f;
+#line 146
+                s_4 = 0.0f;
 
-#line 83
+#line 146
                 c_0 = 0U;
 
                 for(;;)
                 {
 
-#line 85
+#line 148
                     if(c_0 < 128U)
                     {
                     }
                     else
                     {
 
-#line 85
+#line 148
                         break;
                     }
 
-#line 85
-                    float _S37 = ld_f16_s1_0(_S28 + key_0 * _S29 + c_0, &kernelContext_5);
-                    float _S38 = s_0 + qv_0[c_0] * _S37;
+#line 148
+                    float _S38 = ld_f16_s1_0(_S29 + key_0 * _S30 + c_0, &kernelContext_5);
+                    float _S39 = s_4 + qv_0[c_0] * _S38;
 
-#line 85
+#line 148
                     uint32_t c_1 = c_0 + 1U;
 
-#line 85
-                    s_0 = _S38;
+#line 148
+                    s_4 = _S39;
 
-#line 85
+#line 148
                     c_0 = c_1;
 
-#line 85
+#line 148
                 }
 
 
-                float s_2 = s_0 * _S25;
-                if(_S26 != 0.0f)
+                float s_6 = s_4 * _S26;
+                if(_S27 != 0.0f)
                 {
 
-#line 89
-                    s_1 = _S26 * (F32_tanh((s_2)));
+#line 152
+                    s_5 = _S27 * (F32_tanh((s_6)));
 
-#line 89
+#line 152
                 }
                 else
                 {
 
-#line 89
-                    s_1 = s_2;
+#line 152
+                    s_5 = s_6;
 
-#line 89
+#line 152
                 }
 
-#line 89
-                s_0 = s_1;
+#line 152
+                s_4 = s_5;
 
-#line 83
+#line 146
             }
             else
             {
 
-#line 83
-                s_0 = _S36;
+#line 146
+                s_4 = _S37;
 
-#line 83
+#line 146
             }
 
-#line 93
-            sc_0[j_0] = s_0;
+#line 156
+            sc_0[j_0] = s_4;
 
-#line 80
+#line 143
             j_0 = j_0 + 1U;
 
-#line 80
+#line 143
         }
 
-#line 80
-        s_0 = m_0;
+#line 143
+        s_4 = m_1;
 
-#line 80
+#line 143
         uint32_t j_1 = 0U;
 
-#line 96
+#line 159
         for(;;)
         {
 
-#line 96
+#line 159
             if(j_1 < 8U)
             {
             }
             else
             {
 
-#line 96
+#line 159
                 break;
             }
 
-#line 97
-            float _S39 = (F32_max((s_0), (sc_0[j_1])));
+#line 160
+            float _S40 = (F32_max((s_4), (sc_0[j_1])));
 
-#line 96
+#line 159
             uint32_t j_2 = j_1 + 1U;
 
-#line 96
-            s_0 = _S39;
+#line 159
+            s_4 = _S40;
 
-#line 96
+#line 159
             j_1 = j_2;
 
-#line 96
+#line 159
         }
 
 
-        float corr_0 = (F32_exp((m_0 - s_0)));
+        float corr_0 = (F32_exp((m_1 - s_4)));
 
-#line 99
+#line 162
         c_0 = 0U;
         for(;;)
         {
 
-#line 100
+#line 163
             if(c_0 < 128U)
             {
             }
             else
             {
 
-#line 100
+#line 163
                 break;
             }
 
-#line 101
+#line 164
             acc_0[c_0] = acc_0[c_0] * corr_0;
 
-#line 100
+#line 163
             c_0 = c_0 + 1U;
 
-#line 100
+#line 163
         }
 
-#line 100
-        s_1 = 0.0f;
+#line 163
+        s_5 = 0.0f;
 
-#line 100
+#line 163
         uint32_t j_3 = 0U;
 
 
@@ -4747,125 +5011,125 @@ void _main_0(void* _S10, void* entryPointParams_0, void* globalParams_1)
         for(;;)
         {
 
-#line 104
+#line 167
             if(j_3 < 8U)
             {
             }
             else
             {
 
-#line 104
+#line 167
                 break;
             }
 
-#line 105
-            float p_0 = (F32_exp((sc_0[j_3] - s_0)));
-            float _S40 = s_1 + p_0;
-            uint32_t key_1 = _S34 + j_3;
-            if(key_1 < _S20)
+#line 168
+            float p_0 = (F32_exp((sc_0[j_3] - s_4)));
+            float _S41 = s_5 + p_0;
+            uint32_t key_1 = _S35 + j_3;
+            if(key_1 < _S21)
             {
 
-#line 108
+#line 171
                 uint32_t c_2 = 0U;
                 for(;;)
                 {
 
-#line 109
+#line 172
                     if(c_2 < 128U)
                     {
                     }
                     else
                     {
 
-#line 109
+#line 172
                         break;
                     }
 
-#line 109
-                    float _S41 = ld_f16_s2_0(_S30 + key_1 * _S31 + c_2, &kernelContext_5);
-                    acc_0[c_2] = acc_0[c_2] + p_0 * _S41;
+#line 172
+                    float _S42 = ld_f16_s2_0(_S31 + key_1 * _S32 + c_2, &kernelContext_5);
+                    acc_0[c_2] = acc_0[c_2] + p_0 * _S42;
 
-#line 109
+#line 172
                     c_2 = c_2 + 1U;
 
-#line 109
+#line 172
                 }
 
-#line 108
+#line 171
             }
 
-#line 104
+#line 167
             uint32_t j_4 = j_3 + 1U;
 
-#line 104
-            s_1 = _S40;
+#line 167
+            s_5 = _S41;
 
-#line 104
+#line 167
             j_3 = j_4;
 
-#line 104
+#line 167
         }
 
-#line 114
-        float _S42 = ls_0 * corr_0 + s_1;
+#line 177
+        float _S43 = ls_0 * corr_0 + s_5;
 
-#line 78
+#line 141
         uint32_t tt_1 = tt_0 + 1U;
 
-#line 78
-        m_0 = s_0;
+#line 141
+        m_1 = s_4;
 
-#line 78
-        ls_0 = _S42;
+#line 141
+        ls_0 = _S43;
 
-#line 78
+#line 141
         tt_0 = tt_1;
 
-#line 78
+#line 141
     }
 
-#line 117
+#line 180
     if(ls_0 == 0.0f)
     {
 
-#line 117
-        m_0 = 0.0f;
+#line 180
+        m_1 = 0.0f;
 
-#line 117
+#line 180
     }
     else
     {
 
-#line 117
-        m_0 = 1.0f / ls_0;
+#line 180
+        m_1 = 1.0f / ls_0;
 
-#line 117
+#line 180
     }
 
-#line 117
+#line 180
     c_0 = 0U;
     for(;;)
     {
 
-#line 118
+#line 181
         if(c_0 < 128U)
         {
         }
         else
         {
 
-#line 118
+#line 181
             break;
         }
 
-#line 118
-        uint32_t _S43 = off4_0(1U, c_0, h_2, iq_0, b_0, &kernelContext_5);
-        *(&((&kernelContext_5)->globalParams_0->dst_0)[_S43]) = acc_0[c_0] * m_0;
+#line 181
+        uint32_t _S44 = off4_0(1U, c_0, h_6, iq_0, b_6, &kernelContext_5);
+        *(&((&kernelContext_5)->globalParams_0->dst_0)[_S44]) = acc_0[c_0] * m_1;
 
-#line 118
+#line 181
         c_0 = c_0 + 1U;
 
-#line 118
+#line 181
     }
 
 

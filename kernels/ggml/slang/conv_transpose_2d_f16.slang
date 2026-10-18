@@ -41,7 +41,16 @@ uint off4(uint w, uint i0, uint i1, uint i2, uint i3) {
 float ld_f16_s0(uint e) {
   uint w = s0[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
-  return f16tof32(h);
+  uint s = ((h & 32768u) << 16u);
+  uint x = (h & 31744u);
+  uint b = (((h & 32767u) << 13u) + 939524096u);
+  if ((x == 31744u)) {
+    b = (b + 939524096u);
+  }
+  if ((x == 0u)) {
+    b = asuint((asfloat(b) - asfloat(947912704u)));
+  }
+  return asfloat((b | s));
 }
 
 uint f32_to_f16(float f) {
@@ -74,6 +83,19 @@ uint f32_to_f16(float f) {
     h = (h + 1u);
   }
   return (s | h);
+}
+
+float f16_bits_to_f32(uint h) {
+  uint s = ((h & 32768u) << 16u);
+  uint x = (h & 31744u);
+  uint b = (((h & 32767u) << 13u) + 939524096u);
+  if ((x == 31744u)) {
+    b = (b + 939524096u);
+  }
+  if ((x == 0u)) {
+    b = asuint((asfloat(b) - asfloat(947912704u)));
+  }
+  return asfloat((b | s));
 }
 
 [shader("compute")] [numthreads(256, 1, 1)]
@@ -114,7 +136,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
           uint kb = (koc + ((kx * kn0) + (ky * kn1)));
           float vdot = 0.000000;
           for (uint ic = 0u; ic < c; ++ic) {
-            vdot = (vdot + (f16tof32(f32_to_f16(s1[(ib + (ic * in2))])) * ld_f16_s0((kb + (ic * kn3)))));
+            vdot = (vdot + (f16_bits_to_f32(f32_to_f16(s1[(ib + (ic * in2))])) * ld_f16_s0((kb + (ic * kn3)))));
           }
           acc = (acc + vdot);
         }

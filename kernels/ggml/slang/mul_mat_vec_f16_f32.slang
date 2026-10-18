@@ -27,7 +27,16 @@ uint pw(uint k) {
 float lda(uint e) {
   uint w = s0[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
-  return f16tof32(h);
+  uint s = ((h & 32768u) << 16u);
+  uint x = (h & 31744u);
+  uint b = (((h & 32767u) << 13u) + 939524096u);
+  if ((x == 31744u)) {
+    b = (b + 939524096u);
+  }
+  if ((x == 0u)) {
+    b = asuint((asfloat(b) - asfloat(947912704u)));
+  }
+  return asfloat((b | s));
 }
 
 float ldb(uint e) {

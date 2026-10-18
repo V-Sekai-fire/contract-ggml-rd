@@ -33,13 +33,76 @@ uint off4(uint w, uint i0, uint i1, uint i2, uint i3) {
 float ld_f16_s1(uint e) {
   uint w = s1[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
-  return f16tof32(h);
+  uint s = ((h & 32768u) << 16u);
+  uint x = (h & 31744u);
+  uint b = (((h & 32767u) << 13u) + 939524096u);
+  if ((x == 31744u)) {
+    b = (b + 939524096u);
+  }
+  if ((x == 0u)) {
+    b = asuint((asfloat(b) - asfloat(947912704u)));
+  }
+  return asfloat((b | s));
 }
 
 float ld_f16_s2(uint e) {
   uint w = s2[(e >> 1u)];
   uint h = (((e & 1u) != 0u) ? (w >> 16u) : (w & 65535u));
-  return f16tof32(h);
+  uint s = ((h & 32768u) << 16u);
+  uint x = (h & 31744u);
+  uint b = (((h & 32767u) << 13u) + 939524096u);
+  if ((x == 31744u)) {
+    b = (b + 939524096u);
+  }
+  if ((x == 0u)) {
+    b = asuint((asfloat(b) - asfloat(947912704u)));
+  }
+  return asfloat((b | s));
+}
+
+uint f32_to_f16(float f) {
+  uint u = asuint(f);
+  uint s = ((u >> 16u) & 32768u);
+  uint a = (u & 2147483647u);
+  if ((a > 2139095040u)) {
+    return (s | 32256u);
+  }
+  if ((a >= 1199566848u)) {
+    return (s | 31744u);
+  }
+  if ((a >= 947912704u)) {
+    uint h = ((a - 939524096u) >> 13u);
+    uint r = (a & 8191u);
+    if (((r > 4096u) || ((r == 4096u) && ((h & 1u) != 0u)))) {
+      h = (h + 1u);
+    }
+    return (s | h);
+  }
+  if ((a < 855638017u)) {
+    return s;
+  }
+  uint m = ((a & 8388607u) | 8388608u);
+  uint sh = (126u - (a >> 23u));
+  uint h = (m >> sh);
+  uint r = (m & ((1u << sh) - 1u));
+  uint hw = (1u << (sh - 1u));
+  if (((r > hw) || ((r == hw) && ((h & 1u) != 0u)))) {
+    h = (h + 1u);
+  }
+  return (s | h);
+}
+
+float f16_bits_to_f32(uint h) {
+  uint s = ((h & 32768u) << 16u);
+  uint x = (h & 31744u);
+  uint b = (((h & 32767u) << 13u) + 939524096u);
+  if ((x == 31744u)) {
+    b = (b + 939524096u);
+  }
+  if ((x == 0u)) {
+    b = asuint((asfloat(b) - asfloat(947912704u)));
+  }
+  return asfloat((b | s));
 }
 
 [shader("compute")] [numthreads(64, 1, 1)]
@@ -69,7 +132,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   float acc[64];
   float sc[8];
   for (uint c = 0u; c < 64u; ++c) {
-    qv[c] = f16tof32(f32tof16(s0[(qb + c)]));
+    qv[c] = f16_bits_to_f32(f32_to_f16(s0[(qb + c)]));
     acc[c] = 0.000000;
   }
   float m = asfloat((4286578688u | (pw(0u) & 0u)));
