@@ -214,13 +214,41 @@ def fnLdBf16 (buf : String) : SlangFunctionDecl :=
   , params := [uintParam "e"]
   , body := halfOf buf ++ [ .ret (some (.call "asfloat" [.bin "<<" (v "h") (u 16)])) ] }
 
+/-- The f32 value of the f16 bits in the `uint` variable `h`, exact, with
+    no 16-bit type, as statements ending in `return`. A normal half moves
+    its exponent bias from 15 to 127 (`+ 112 << 23`); inf and NaN move by
+    the same again, to exponent 255. A zero or subnormal half first reads
+    as `2^-14 * (1 + m/1024)`, and taking `2^-14` away leaves `m * 2^-24`
+    exactly (both are in one binade, and the result is a normal f32 or
+    zero, so a GPU that flushes subnormals changes nothing). Slang's
+    `f16tof32` emits a 16-bit integer in SPIR-V, which tint does not read,
+    and a GPU may flush a subnormal half; this gives the same bits on every
+    target. -/
+private def halfToF32 : List SlangStmt :=
+  [ .declInit (.scalar .uint) "s" (.bin "<<" (.bin "&" (v "h") (u 32768)) (u 16))
+  , .declInit (.scalar .uint) "x" (.bin "&" (v "h") (u 31744))
+  , .declInit (.scalar .uint) "b" (.bin "+" (.bin "<<" (.bin "&" (v "h") (u 32767)) (u 13)) (u 939524096))
+  , .ifNoElse (.bin "==" (v "x") (u 31744)) [ .assign (v "b") (.bin "+" (v "b") (u 939524096)) ]
+  , .ifNoElse (.bin "==" (v "x") (u 0))
+      [ .assign (v "b") (.call "asuint" [.bin "-" (.call "asfloat" [v "b"]) (.call "asfloat" [u 947912704])]) ]
+  , .ret (some (.call "asfloat" [.bin "|" (v "b") (v "s")])) ]
+
 /-- `float ld_f16_<buf>(uint e)`: element `e` of an f16 tensor held in a
-    `uint` word buffer (no 16-bit storage capability needed). -/
+    `uint` word buffer (no 16-bit storage capability needed), widened
+    exactly (`halfToF32`). -/
 def fnLdF16 (buf : String) : SlangFunctionDecl :=
   { retType := .scalar .float
   , name := "ld_f16_" ++ buf
   , params := [uintParam "e"]
-  , body := halfOf buf ++ [ .ret (some (.call "f16tof32" [v "h"])) ] }
+  , body := halfOf buf ++ halfToF32 }
+
+/-- `float f16_bits_to_f32(uint h)`: the f32 value of f16 bits `h`, exact
+    (`halfToF32`). -/
+def fnF16BitsToF32 : SlangFunctionDecl :=
+  { retType := .scalar .float
+  , name := "f16_bits_to_f32"
+  , params := [uintParam "h"]
+  , body := halfToF32 }
 
 /-! ## Entry point -/
 

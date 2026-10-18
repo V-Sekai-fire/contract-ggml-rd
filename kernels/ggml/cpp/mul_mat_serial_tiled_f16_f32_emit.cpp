@@ -4343,13 +4343,47 @@ static float lda_0(uint32_t e_0, KernelContext_0 * kernelContext_1)
 
 #line 27
     }
-    return (f16tof32((h_0)));
+    uint32_t s_0 = (h_0 & 32768U) << 16U;
+    uint32_t x_0 = h_0 & 31744U;
+    uint32_t b_0 = ((h_0 & 32767U) << 13U) + 939524096U;
+
+#line 30
+    uint32_t b_1;
+    if(x_0 == 31744U)
+    {
+
+#line 31
+        b_1 = b_0 + 939524096U;
+
+#line 31
+    }
+    else
+    {
+
+#line 31
+        b_1 = b_0;
+
+#line 31
+    }
+
+
+    if(x_0 == 0U)
+    {
+
+#line 34
+        b_1 = (F32_asuint(((U32_asfloat((b_1))) - (U32_asfloat((947912704U))))));
+
+#line 34
+    }
+
+
+    return (U32_asfloat((b_1 | s_0)));
 }
 
 static float ldb_0(uint32_t e_1, KernelContext_0 * kernelContext_2)
 {
 
-#line 32
+#line 41
     return *(&(kernelContext_2->globalParams_0->s1_0)[e_1]);
 }
 
@@ -4357,217 +4391,217 @@ static float ldb_0(uint32_t e_1, KernelContext_0 * kernelContext_2)
 void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
 {
 
-#line 36
+#line 45
     ComputeThreadVaryingInput * _S2 = (slang_bit_cast<ComputeThreadVaryingInput *>(_S1));
 
-#line 36
+#line 45
     KernelContext_0 kernelContext_3;
 
-#line 36
+#line 45
     (&kernelContext_3)->globalParams_0 = (slang_bit_cast<GlobalParams_0*>(globalParams_1));
 
-#line 36
+#line 45
     Vector<uint32_t, 3>  _S3 = _S2->groupID;
 
-#line 36
+#line 45
     Vector<uint32_t, 3>  _S4 = _S2->groupThreadID;
 
-#line 36
+#line 45
     uint32_t _S5 = pw_0(10U, &kernelContext_3);
 
-#line 36
+#line 45
     uint32_t _S6 = pw_0(11U, &kernelContext_3);
 
-#line 36
+#line 45
     uint32_t _S7 = pw_0(20U, &kernelContext_3);
 
-#line 36
+#line 45
     uint32_t _S8 = pw_0(21U, &kernelContext_3);
 
-#line 41
+#line 50
     uint32_t _S9 = _S3.z;
 
-#line 41
+#line 50
     uint32_t b2_0 = _S9 % _S8;
     uint32_t b3_0 = _S9 / _S8;
 
-#line 42
+#line 51
     uint32_t _S10 = pw_0(18U, &kernelContext_3);
 
-#line 42
+#line 51
     uint32_t _S11 = pw_0(55U, &kernelContext_3);
     uint32_t _S12 = b2_0 / _S11;
 
-#line 43
+#line 52
     uint32_t _S13 = pw_0(16U, &kernelContext_3);
 
-#line 43
+#line 52
     uint32_t _S14 = _S10 + _S12 * _S13;
 
-#line 43
+#line 52
     uint32_t _S15 = pw_0(56U, &kernelContext_3);
 
-#line 43
+#line 52
     uint32_t _S16 = b3_0 / _S15;
 
-#line 43
+#line 52
     uint32_t _S17 = pw_0(17U, &kernelContext_3);
 
-#line 43
+#line 52
     uint32_t _S18 = _S14 + _S16 * _S17;
 
-#line 43
+#line 52
     uint32_t _S19 = pw_0(27U, &kernelContext_3);
 
-#line 43
+#line 52
     uint32_t _S20 = pw_0(25U, &kernelContext_3);
     uint32_t _S21 = _S19 + b2_0 * _S20;
 
-#line 44
+#line 53
     uint32_t _S22 = pw_0(26U, &kernelContext_3);
 
-#line 44
+#line 53
     uint32_t _S23 = _S21 + b3_0 * _S22;
 
-#line 44
+#line 53
     uint32_t _S24 = pw_0(9U, &kernelContext_3);
 
-#line 44
+#line 53
     uint32_t _S25 = pw_0(7U, &kernelContext_3);
     uint32_t _S26 = _S24 + b2_0 * _S25;
 
-#line 45
+#line 54
     uint32_t _S27 = pw_0(8U, &kernelContext_3);
 
-#line 45
+#line 54
     uint32_t dBase_0 = _S26 + b3_0 * _S27;
 
-#line 45
+#line 54
     uint32_t _S28 = pw_0(14U, &kernelContext_3);
 
-#line 45
+#line 54
     uint32_t _S29 = pw_0(15U, &kernelContext_3);
 
-#line 45
+#line 54
     uint32_t _S30 = pw_0(23U, &kernelContext_3);
 
-#line 45
+#line 54
     uint32_t _S31 = pw_0(24U, &kernelContext_3);
 
-#line 45
+#line 54
     uint32_t _S32 = pw_0(5U, &kernelContext_3);
 
-#line 45
+#line 54
     uint32_t _S33 = pw_0(6U, &kernelContext_3);
 
-#line 52
+#line 61
     uint32_t m0_0 = _S3.x * 64U;
     uint32_t n0_0 = _S3.y * 64U;
 
-#line 70
+#line 79
     uint32_t _S34 = _S4.x;
 
-#line 70
+#line 79
     uint32_t i0_0 = m0_0 + _S34;
     uint32_t i1_0 = m0_0 + (_S34 + 16U);
     uint32_t i2_0 = m0_0 + (_S34 + 32U);
     uint32_t i3_0 = m0_0 + (_S34 + 48U);
     uint32_t _S35 = _S4.y;
 
-#line 74
+#line 83
     uint32_t j0_0 = n0_0 + _S35;
     uint32_t j1_0 = n0_0 + (_S35 + 16U);
     uint32_t j2_0 = n0_0 + (_S35 + 32U);
     uint32_t j3_0 = n0_0 + (_S35 + 48U);
 
-#line 77
+#line 86
     float c00_0 = 0.0f;
 
-#line 77
+#line 86
     float c01_0 = 0.0f;
 
-#line 77
+#line 86
     float c02_0 = 0.0f;
 
-#line 77
+#line 86
     float c03_0 = 0.0f;
 
-#line 77
+#line 86
     float c10_0 = 0.0f;
 
-#line 77
+#line 86
     float c11_0 = 0.0f;
 
-#line 77
+#line 86
     float c12_0 = 0.0f;
 
-#line 77
+#line 86
     float c13_0 = 0.0f;
 
-#line 77
+#line 86
     float c20_0 = 0.0f;
 
-#line 77
+#line 86
     float c21_0 = 0.0f;
 
-#line 77
+#line 86
     float c22_0 = 0.0f;
 
-#line 77
+#line 86
     float c23_0 = 0.0f;
 
-#line 77
+#line 86
     float c30_0 = 0.0f;
 
-#line 77
+#line 86
     float c31_0 = 0.0f;
 
-#line 77
+#line 86
     float c32_0 = 0.0f;
 
-#line 77
+#line 86
     float c33_0 = 0.0f;
 
-#line 77
+#line 86
     uint32_t k_1 = 0U;
     for(;;)
     {
 
-#line 78
+#line 87
         if(k_1 < _S5)
         {
         }
         else
         {
 
-#line 78
+#line 87
             break;
         }
 
-#line 78
+#line 87
         float x0_0;
 
         if(i0_0 < _S6)
         {
 
-#line 80
+#line 89
             float _S36 = lda_0(_S18 + k_1 * _S28 + i0_0 * _S29, &kernelContext_3);
 
-#line 80
+#line 89
             x0_0 = _S36;
 
-#line 80
+#line 89
         }
         else
         {
 
-#line 80
+#line 89
             x0_0 = 0.0f;
 
-#line 80
+#line 89
         }
 
-#line 80
+#line 89
         float x1_0;
 
 
@@ -4575,24 +4609,24 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         if(i1_0 < _S6)
         {
 
-#line 84
+#line 93
             float _S37 = lda_0(_S18 + k_1 * _S28 + i1_0 * _S29, &kernelContext_3);
 
-#line 84
+#line 93
             x1_0 = _S37;
 
-#line 84
+#line 93
         }
         else
         {
 
-#line 84
+#line 93
             x1_0 = 0.0f;
 
-#line 84
+#line 93
         }
 
-#line 84
+#line 93
         float x2_0;
 
 
@@ -4600,24 +4634,24 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         if(i2_0 < _S6)
         {
 
-#line 88
+#line 97
             float _S38 = lda_0(_S18 + k_1 * _S28 + i2_0 * _S29, &kernelContext_3);
 
-#line 88
+#line 97
             x2_0 = _S38;
 
-#line 88
+#line 97
         }
         else
         {
 
-#line 88
+#line 97
             x2_0 = 0.0f;
 
-#line 88
+#line 97
         }
 
-#line 88
+#line 97
         float x3_0;
 
 
@@ -4625,24 +4659,24 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         if(i3_0 < _S6)
         {
 
-#line 92
+#line 101
             float _S39 = lda_0(_S18 + k_1 * _S28 + i3_0 * _S29, &kernelContext_3);
 
-#line 92
+#line 101
             x3_0 = _S39;
 
-#line 92
+#line 101
         }
         else
         {
 
-#line 92
+#line 101
             x3_0 = 0.0f;
 
-#line 92
+#line 101
         }
 
-#line 92
+#line 101
         float y0_0;
 
 
@@ -4650,24 +4684,24 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         if(j0_0 < _S7)
         {
 
-#line 96
+#line 105
             float _S40 = ldb_0(_S23 + k_1 * _S30 + j0_0 * _S31, &kernelContext_3);
 
-#line 96
+#line 105
             y0_0 = _S40;
 
-#line 96
+#line 105
         }
         else
         {
 
-#line 96
+#line 105
             y0_0 = 0.0f;
 
-#line 96
+#line 105
         }
 
-#line 96
+#line 105
         float y1_0;
 
 
@@ -4675,24 +4709,24 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         if(j1_0 < _S7)
         {
 
-#line 100
+#line 109
             float _S41 = ldb_0(_S23 + k_1 * _S30 + j1_0 * _S31, &kernelContext_3);
 
-#line 100
+#line 109
             y1_0 = _S41;
 
-#line 100
+#line 109
         }
         else
         {
 
-#line 100
+#line 109
             y1_0 = 0.0f;
 
-#line 100
+#line 109
         }
 
-#line 100
+#line 109
         float y2_0;
 
 
@@ -4700,24 +4734,24 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         if(j2_0 < _S7)
         {
 
-#line 104
+#line 113
             float _S42 = ldb_0(_S23 + k_1 * _S30 + j2_0 * _S31, &kernelContext_3);
 
-#line 104
+#line 113
             y2_0 = _S42;
 
-#line 104
+#line 113
         }
         else
         {
 
-#line 104
+#line 113
             y2_0 = 0.0f;
 
-#line 104
+#line 113
         }
 
-#line 104
+#line 113
         float y3_0;
 
 
@@ -4725,21 +4759,21 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         if(j3_0 < _S7)
         {
 
-#line 108
+#line 117
             float _S43 = ldb_0(_S23 + k_1 * _S30 + j3_0 * _S31, &kernelContext_3);
 
-#line 108
+#line 117
             y3_0 = _S43;
 
-#line 108
+#line 117
         }
         else
         {
 
-#line 108
+#line 117
             y3_0 = 0.0f;
 
-#line 108
+#line 117
         }
 
 
@@ -4760,159 +4794,75 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
         float _S58 = c32_0 + x3_0 * y2_0;
         float _S59 = c33_0 + x3_0 * y3_0;
 
-#line 78
+#line 87
         uint32_t k_2 = k_1 + 1U;
 
-#line 78
+#line 87
         c00_0 = _S44;
 
-#line 78
+#line 87
         c01_0 = _S45;
 
-#line 78
+#line 87
         c02_0 = _S46;
 
-#line 78
+#line 87
         c03_0 = _S47;
 
-#line 78
+#line 87
         c10_0 = _S48;
 
-#line 78
+#line 87
         c11_0 = _S49;
 
-#line 78
+#line 87
         c12_0 = _S50;
 
-#line 78
+#line 87
         c13_0 = _S51;
 
-#line 78
+#line 87
         c20_0 = _S52;
 
-#line 78
+#line 87
         c21_0 = _S53;
 
-#line 78
+#line 87
         c22_0 = _S54;
 
-#line 78
+#line 87
         c23_0 = _S55;
 
-#line 78
+#line 87
         c30_0 = _S56;
 
-#line 78
+#line 87
         c31_0 = _S57;
 
-#line 78
+#line 87
         c32_0 = _S58;
 
-#line 78
+#line 87
         c33_0 = _S59;
 
-#line 78
+#line 87
         k_1 = k_2;
 
-#line 78
+#line 87
     }
 
-#line 128
+#line 137
     bool _S60 = i0_0 < _S6;
 
-#line 128
+#line 137
     bool _S61;
 
-#line 128
-    if(_S60)
-    {
-
-#line 128
-        _S61 = j0_0 < _S7;
-
-#line 128
-    }
-    else
-    {
-
-#line 128
-        _S61 = false;
-
-#line 128
-    }
-
-#line 128
-    if(_S61)
-    {
-
-#line 129
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j0_0 * _S33]) = c00_0;
-
-#line 128
-    }
-
-
-    if(_S60)
-    {
-
-#line 131
-        _S61 = j1_0 < _S7;
-
-#line 131
-    }
-    else
-    {
-
-#line 131
-        _S61 = false;
-
-#line 131
-    }
-
-#line 131
-    if(_S61)
-    {
-
-#line 132
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j1_0 * _S33]) = c01_0;
-
-#line 131
-    }
-
-
-    if(_S60)
-    {
-
-#line 134
-        _S61 = j2_0 < _S7;
-
-#line 134
-    }
-    else
-    {
-
-#line 134
-        _S61 = false;
-
-#line 134
-    }
-
-#line 134
-    if(_S61)
-    {
-
-#line 135
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j2_0 * _S33]) = c02_0;
-
-#line 134
-    }
-
-
+#line 137
     if(_S60)
     {
 
 #line 137
-        _S61 = j3_0 < _S7;
+        _S61 = j0_0 < _S7;
 
 #line 137
     }
@@ -4930,20 +4880,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 138
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j3_0 * _S33]) = c03_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j0_0 * _S33]) = c00_0;
 
 #line 137
     }
 
 
-    bool _S62 = i1_0 < _S6;
-
-#line 140
-    if(_S62)
+    if(_S60)
     {
 
 #line 140
-        _S61 = j0_0 < _S7;
+        _S61 = j1_0 < _S7;
 
 #line 140
     }
@@ -4961,17 +4908,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 141
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j0_0 * _S33]) = c10_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j1_0 * _S33]) = c01_0;
 
 #line 140
     }
 
 
-    if(_S62)
+    if(_S60)
     {
 
 #line 143
-        _S61 = j1_0 < _S7;
+        _S61 = j2_0 < _S7;
 
 #line 143
     }
@@ -4989,17 +4936,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 144
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j1_0 * _S33]) = c11_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j2_0 * _S33]) = c02_0;
 
 #line 143
     }
 
 
-    if(_S62)
+    if(_S60)
     {
 
 #line 146
-        _S61 = j2_0 < _S7;
+        _S61 = j3_0 < _S7;
 
 #line 146
     }
@@ -5017,17 +4964,20 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 147
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j2_0 * _S33]) = c12_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i0_0 * _S32 + j3_0 * _S33]) = c03_0;
 
 #line 146
     }
 
 
+    bool _S62 = i1_0 < _S6;
+
+#line 149
     if(_S62)
     {
 
 #line 149
-        _S61 = j3_0 < _S7;
+        _S61 = j0_0 < _S7;
 
 #line 149
     }
@@ -5045,20 +4995,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 150
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j3_0 * _S33]) = c13_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j0_0 * _S33]) = c10_0;
 
 #line 149
     }
 
 
-    bool _S63 = i2_0 < _S6;
-
-#line 152
-    if(_S63)
+    if(_S62)
     {
 
 #line 152
-        _S61 = j0_0 < _S7;
+        _S61 = j1_0 < _S7;
 
 #line 152
     }
@@ -5076,17 +5023,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 153
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j0_0 * _S33]) = c20_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j1_0 * _S33]) = c11_0;
 
 #line 152
     }
 
 
-    if(_S63)
+    if(_S62)
     {
 
 #line 155
-        _S61 = j1_0 < _S7;
+        _S61 = j2_0 < _S7;
 
 #line 155
     }
@@ -5104,17 +5051,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 156
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j1_0 * _S33]) = c21_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j2_0 * _S33]) = c12_0;
 
 #line 155
     }
 
 
-    if(_S63)
+    if(_S62)
     {
 
 #line 158
-        _S61 = j2_0 < _S7;
+        _S61 = j3_0 < _S7;
 
 #line 158
     }
@@ -5132,17 +5079,20 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 159
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j2_0 * _S33]) = c22_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i1_0 * _S32 + j3_0 * _S33]) = c13_0;
 
 #line 158
     }
 
 
+    bool _S63 = i2_0 < _S6;
+
+#line 161
     if(_S63)
     {
 
 #line 161
-        _S61 = j3_0 < _S7;
+        _S61 = j0_0 < _S7;
 
 #line 161
     }
@@ -5160,20 +5110,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 162
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j3_0 * _S33]) = c23_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j0_0 * _S33]) = c20_0;
 
 #line 161
     }
 
 
-    bool _S64 = i3_0 < _S6;
-
-#line 164
-    if(_S64)
+    if(_S63)
     {
 
 #line 164
-        _S61 = j0_0 < _S7;
+        _S61 = j1_0 < _S7;
 
 #line 164
     }
@@ -5191,17 +5138,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 165
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j0_0 * _S33]) = c30_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j1_0 * _S33]) = c21_0;
 
 #line 164
     }
 
 
-    if(_S64)
+    if(_S63)
     {
 
 #line 167
-        _S61 = j1_0 < _S7;
+        _S61 = j2_0 < _S7;
 
 #line 167
     }
@@ -5219,17 +5166,17 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 168
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j1_0 * _S33]) = c31_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j2_0 * _S33]) = c22_0;
 
 #line 167
     }
 
 
-    if(_S64)
+    if(_S63)
     {
 
 #line 170
-        _S61 = j2_0 < _S7;
+        _S61 = j3_0 < _S7;
 
 #line 170
     }
@@ -5247,17 +5194,20 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 171
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j2_0 * _S33]) = c32_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i2_0 * _S32 + j3_0 * _S33]) = c23_0;
 
 #line 170
     }
 
 
+    bool _S64 = i3_0 < _S6;
+
+#line 173
     if(_S64)
     {
 
 #line 173
-        _S61 = j3_0 < _S7;
+        _S61 = j0_0 < _S7;
 
 #line 173
     }
@@ -5275,9 +5225,93 @@ void _main_0(void* _S1, void* entryPointParams_0, void* globalParams_1)
     {
 
 #line 174
-        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j3_0 * _S33]) = c33_0;
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j0_0 * _S33]) = c30_0;
 
 #line 173
+    }
+
+
+    if(_S64)
+    {
+
+#line 176
+        _S61 = j1_0 < _S7;
+
+#line 176
+    }
+    else
+    {
+
+#line 176
+        _S61 = false;
+
+#line 176
+    }
+
+#line 176
+    if(_S61)
+    {
+
+#line 177
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j1_0 * _S33]) = c31_0;
+
+#line 176
+    }
+
+
+    if(_S64)
+    {
+
+#line 179
+        _S61 = j2_0 < _S7;
+
+#line 179
+    }
+    else
+    {
+
+#line 179
+        _S61 = false;
+
+#line 179
+    }
+
+#line 179
+    if(_S61)
+    {
+
+#line 180
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j2_0 * _S33]) = c32_0;
+
+#line 179
+    }
+
+
+    if(_S64)
+    {
+
+#line 182
+        _S61 = j3_0 < _S7;
+
+#line 182
+    }
+    else
+    {
+
+#line 182
+        _S61 = false;
+
+#line 182
+    }
+
+#line 182
+    if(_S61)
+    {
+
+#line 183
+        *(&((&kernelContext_3)->globalParams_0->dst_0)[dBase_0 + i3_0 * _S32 + j3_0 * _S33]) = c33_0;
+
+#line 182
     }
 
 

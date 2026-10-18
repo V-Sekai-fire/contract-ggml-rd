@@ -21,7 +21,7 @@ accumulated in f32 in ggml-cpu's im2col order (ic, ky, kx:
 whose SIMD blocking is not sequential, so the sum agrees within
 test_conv_2d's NMSE 5e-4, not bit for bit). For an f16 kernel ggml-cpu's
 patch is f16, so the input is rounded to f16 before the product:
-`conv2d_f16` does the same (`f16tof32(f32_to_f16(x))`, `Conv`'s exact
+`conv2d_f16` does the same (`f16_bits_to_f32(f32_to_f16(x))`, `Conv`'s exact
 rounding). One thread per output, no barriers, no group memory (so no
 Serial sibling); the kernel through its strides (ggml-cpu asserts it
 contiguous, the packer too), the input through its.
@@ -53,7 +53,7 @@ def conv2dBody (f16 : Bool) : List SlangStmt :=
     if f16 then .call "ld_f16_s0" [idx] else .index (v "s0") idx
   let xval : SlangExpr :=
     let x := .index (v "s1") (add (v "iby") (mul (sub (v "x") (v "px")) (v "in0")))
-    if f16 then .call "f16tof32" [.call "f32_to_f16" [x]] else x
+    if f16 then .call "f16_bits_to_f32" [.call "f32_to_f16" [x]] else x
   let w (n : String) (k : Nat) : SlangStmt := .declInit U n (pwN k)
   [ .decl U "ox", .decl U "oy", .decl U "oc", .decl U "n"
   , .expr (.call "unravel4" [v "e", u wDst, v "ox", v "oy", v "oc", v "n"])
@@ -88,7 +88,7 @@ def conv2dF32 : SlangShaderModule :=
 
 def conv2dF16 : SlangShaderModule :=
   kernelModule .uint .float .uint .float
-    [fnPw, fnUnravel4, fnOff4, fnLdF16 "s0", fnF32ToF16]
+    [fnPw, fnUnravel4, fnOff4, fnLdF16 "s0", fnF32ToF16, fnF16BitsToF32]
     (entry1D threadgroup (conv2dBody true))
 
 /-- The kernels this module contributes, by their kernels.txt names. -/
@@ -153,7 +153,7 @@ void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
 
 def expectedEntryF16 : String :=
   expectedEntryF32.replace "(s1[(iby + ((x - px) * in0))] * s0[(kby + (kx * kn0))])"
-    "(f16tof32(f32_to_f16(s1[(iby + ((x - px) * in0))])) * ld_f16_s0((kby + (kx * kn0))))"
+    "(f16_bits_to_f32(f32_to_f16(s1[(iby + ((x - px) * in0))])) * ld_f16_s0((kby + (kx * kn0))))"
 
 /-- The head (declarations and helpers) is exactly the CONV_3D kernel's:
     its text up to the entry attribute. -/

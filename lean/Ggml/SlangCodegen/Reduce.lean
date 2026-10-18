@@ -20,7 +20,8 @@ in the same order):
   ggml order (`unravel4` over src0's ne, then its strides, so a permuted
   source reads right), then the same tree; thread 0 writes `dst[offset]`.
   Word 53 is the thread count (256, or 1 for the sibling: `entry1D`'s
-  guard), so both variants run one group of the packer's grid:
+  guard, which the tree kernel leaves out), so both variants run one group
+  of the packer's grid:
   interactor-nx-ggml's `add_sum_all`, rf-detr's losses.
 
 ggml-cpu sums both in double (`ggml_vec_sum_f32`, `ggml_vec_sum_f32_ggf`)
@@ -86,9 +87,18 @@ def sumBody (tg : Nat) (var : Variant) : List SlangStmt :=
    | .par => [ .ifNoElse (.bin "==" (v "e") (u 0)) [st] ]
    | .ser => [ st ])
 
+/-- `entry1D` without its guard, for the tree: the packer launches exactly
+    one group of `tg` threads (word 53 is `tg`), so no thread is past the
+    end, and WGSL refuses a barrier after a `return` that depends on the
+    thread id (the uniformity rule). -/
+def entryOneGroup (tg : Nat) (body : List SlangStmt) : SlangFunctionDecl :=
+  { entry1D tg body with body := [ .declInit ui "e" (linearThread tg) ] ++ body }
+
 def sumModule (tg : Nat) (var : Variant) : SlangShaderModule :=
   let m := kernelModule .float .uint .uint .float [fnPw, fnUnravel4, fnOff4]
-    (entry1D (if var == .par then tg else 1) (sumBody tg var))
+    (match var with
+     | .par => entryOneGroup tg (sumBody tg var)
+     | .ser => entry1D 1 (sumBody tg var))
   match var with
   | .par => { m with groupShared := [ { name := "sh", elemType := fl, dims := [tg] } ] }
   | .ser => m
@@ -170,9 +180,6 @@ uint off4(uint w, uint i0, uint i1, uint i2, uint i3) {
 [shader(\"compute\")] [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint e = ((((gid.y * pw(54u)) + gid.x) * 256u) + lid.x);
-  if ((e >= pw(53u))) {
-    return;
-  }
   uint n = (((pw(10u) * pw(11u)) * pw(12u)) * pw(13u));
   uint t = e;
   float acc = 0.0f;

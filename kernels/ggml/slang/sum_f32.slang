@@ -43,9 +43,6 @@ uint off4(uint w, uint i0, uint i1, uint i2, uint i3) {
 [shader("compute")] [numthreads(256, 1, 1)]
 void main(uint3 gid : SV_GroupID, uint3 lid : SV_GroupThreadID) {
   uint e = ((((gid.y * pw(54u)) + gid.x) * 256u) + lid.x);
-  if ((e >= pw(53u))) {
-    return;
-  }
   uint n = (((pw(10u) * pw(11u)) * pw(12u)) * pw(13u));
   uint t = e;
   float acc = 0.0f;
