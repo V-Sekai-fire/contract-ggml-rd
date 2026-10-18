@@ -99,6 +99,9 @@ bool cpu_run(const CpuDispatch &d, std::string *why);
 ::RID slot_set(uint32_t i);
 // The set-0 uniform set of (params, s0, s1, s2, dst), cached by their RIDs.
 ::RID tensor_set(::RID params, ::RID s0, ::RID s1, ::RID s2, ::RID dst);
+// A 16-byte buffer of its own for unused source slot s (0-2). WebGPU refuses a dispatch that binds
+// one buffer in two writable slots, so an unused slot cannot name the dst buffer.
+::RID unused_slot_buffer(int s);
 // Godot frees a buffer's uniform sets with it; drop them from the cache.
 void forget_sets_of(::RID buffer);
 #ifdef GGML_RD_WEB

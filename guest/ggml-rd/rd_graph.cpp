@@ -221,8 +221,13 @@ ggml_status graph_compute(ggml_cgraph *g) {
 		for (int s = 0; s < 3; ++s) {
 			const ggml_tensor *src = node->src[s];
 			if (src == nullptr) {
-				dp.bind[s] = db->rid; // an unused binding names the dst buffer: no new dependency
+				// An unused slot binds a buffer of its own (WebGPU refuses one buffer in two
+				// writable slots). Nothing writes it, so it adds no dependency.
+				dp.bind[s] = cpu ? db->rid : unused_slot_buffer(s);
 				dp.buf[s] = db;
+				if (dp.bind[s].index == 0) {
+					return fail_graph(c.last_error);
+				}
 				continue;
 			}
 			Buffer *sb = buffer_of(src);
@@ -254,6 +259,59 @@ ggml_status graph_compute(ggml_cgraph *g) {
 			w[(node->src[1] ? W_SRC1 : W_SRC0) + T_OFF] += 1;
 			++c.st.faults;
 		}
+#ifndef GGML_RD_WEB
+		// Census (GGML_RD_ALIAS_CENSUS=1): WebGPU rejects a dispatch that binds one buffer in two
+		// writable slots. Class bits: 1 an unused slot names dst's buffer, 2 two sources share a
+		// buffer, 4 a source shares dst's buffer, 8 in place (a source's bytes overlap dst's).
+		static const bool census = env_int("GGML_RD_ALIAS_CENSUS") != 0;
+		if (census) {
+			static int64_t by_class[32] = {};
+			static int64_t total = 0;
+			int cls = 0;
+			for (int s = 0; s < 3; ++s) {
+				if (node->src[s] == nullptr) {
+					cls |= dp.bind[s].index == dp.bind[3].index ? 1 : 0;
+					continue;
+				}
+				if (dp.bind[s].index == dp.bind[3].index) {
+					const Range r = range_of(node->src[s], dp.buf[s]);
+					cls |= (r.lo < dp.write.hi && dp.write.lo < r.hi) ? 8 : 4;
+				}
+				for (int t = 0; t < s; ++t) {
+					if (node->src[t] != nullptr && dp.bind[t].index == dp.bind[s].index) {
+						cls |= 2;
+					}
+				}
+			}
+			// 16: two bound tensors are views of one root tensor, so no buffer assignment
+			// separates them (only ranged bindings or a copy do).
+			auto root = [](const ggml_tensor *t) {
+				while (t->view_src != nullptr) {
+					t = t->view_src;
+				}
+				return t;
+			};
+			const ggml_tensor *used[4] = { node->src[0], node->src[1], node->src[2], node };
+			for (int i = 0; i < 4; ++i) {
+				for (int j = 0; j < i; ++j) {
+					if (used[i] && used[j] && root(used[i]) == root(used[j])) {
+						cls |= 16;
+					}
+				}
+			}
+			++by_class[cls];
+			++total;
+			if (c.dispatch_serial % 20000 == 0 || node == g->nodes[g->n_nodes - 1]) {
+				std::string line = "ALIAS-CENSUS total=" + std::to_string(total);
+				for (int k = 0; k < 32; ++k) {
+					if (by_class[k] != 0) {
+						line += " c" + std::to_string(k) + "=" + std::to_string(by_class[k]);
+					}
+				}
+				std::printf("%s\n", line.c_str());
+			}
+		}
+#endif
 		ds.push_back(dp);
 		if (prof > 1) {
 			pf.per_dispatch.back().pack_us = rdc::host_usec() - pf.per_dispatch.back().pack_us;

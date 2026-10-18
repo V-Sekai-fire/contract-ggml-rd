@@ -35,6 +35,7 @@ struct State {
 	uint32_t params_slots = 0;
 	std::vector<::RID> slot_ubos, slot_sets;
 	std::map<std::array<int64_t, 5>, ::RID> set0;
+	::RID unused[3];
 #ifdef GGML_RD_WEB
 	std::map<std::array<int64_t, 13>, ::RID> set0_ranged; // params, then (rid, offset, size) x 4
 	::RID scratch;
@@ -152,6 +153,17 @@ void created_one() {
 		created_one();
 	}
 	return s.slot_sets[i];
+}
+
+::RID unused_slot_buffer(int slot) {
+	State &s = S();
+	if (s.unused[slot].index == 0) {
+		s.unused[slot] = ctx().dev->storage_buffer_empty(16);
+		if (s.unused[slot].index == 0) {
+			set_error("unused slot buffer: " + ctx().dev->error());
+		}
+	}
+	return s.unused[slot];
 }
 
 ::RID tensor_set(::RID params, ::RID s0, ::RID s1, ::RID s2, ::RID dst) {
@@ -287,6 +299,9 @@ void release_kernels() {
 		drop(r);
 	}
 	for (::RID &r : s.slot_ubos) {
+		drop(r);
+	}
+	for (::RID &r : s.unused) {
 		drop(r);
 	}
 	drop(s.params);
