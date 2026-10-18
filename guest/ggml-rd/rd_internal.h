@@ -34,6 +34,8 @@ struct Stats {
 	int64_t waits = 0, faults = 0, failed_graphs = 0;
 	int64_t params_bytes = 0, set_bytes = 0, get_bytes = 0, copies = 0, clears = 0;
 	int64_t buffers_live = 0, bytes_live = 0;
+	// Sources copied out of a shared buffer, and dispatches that still bind one buffer twice.
+	int64_t alias_copies = 0, aliased_dispatches = 0, alias_copy_bytes = 0;
 	// The last graph.
 	int64_t last_nodes = 0, last_dispatches = 0, last_barriers = 0, last_skipped = 0;
 };
@@ -99,6 +101,12 @@ bool cpu_run(const CpuDispatch &d, std::string *why);
 ::RID slot_set(uint32_t i);
 // The set-0 uniform set of (params, s0, s1, s2, dst), cached by their RIDs.
 ::RID tensor_set(::RID params, ::RID s0, ::RID s1, ::RID s2, ::RID dst);
+// A 16-byte buffer of its own for unused source slot s (0-2). WebGPU refuses a dispatch that binds
+// one buffer in two writable slots, so an unused slot cannot name the dst buffer.
+::RID unused_slot_buffer(int s);
+// Scratch storage buffer of at least `bytes` for copied source slot s (0-2), kept and grown.
+// Growing it frees the old buffer and the sets that bound it.
+::RID copy_slot_buffer(int s, uint64_t bytes);
 // Godot frees a buffer's uniform sets with it; drop them from the cache.
 void forget_sets_of(::RID buffer);
 #ifdef GGML_RD_WEB

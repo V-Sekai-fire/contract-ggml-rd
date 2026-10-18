@@ -35,6 +35,9 @@ struct State {
 	uint32_t params_slots = 0;
 	std::vector<::RID> slot_ubos, slot_sets;
 	std::map<std::array<int64_t, 5>, ::RID> set0;
+	::RID unused[3];
+	::RID copy[3];
+	uint64_t copy_bytes[3] = {};
 #ifdef GGML_RD_WEB
 	std::map<std::array<int64_t, 13>, ::RID> set0_ranged; // params, then (rid, offset, size) x 4
 	::RID scratch;
@@ -152,6 +155,36 @@ void created_one() {
 		created_one();
 	}
 	return s.slot_sets[i];
+}
+
+::RID copy_slot_buffer(int slot, uint64_t bytes) {
+	State &s = S();
+	if (s.copy[slot].index != 0 && s.copy_bytes[slot] >= bytes) {
+		return s.copy[slot];
+	}
+	rdc::Device &d = *ctx().dev;
+	if (s.copy[slot].index != 0) {
+		forget_sets_of(s.copy[slot]);
+		d.free_rid(s.copy[slot]);
+	}
+	bytes = (bytes + 255) & ~uint64_t(255);
+	s.copy[slot] = d.storage_buffer_empty(size_t(bytes), false);
+	s.copy_bytes[slot] = s.copy[slot].index != 0 ? bytes : 0;
+	if (s.copy[slot].index == 0) {
+		set_error("copy slot buffer: " + d.error());
+	}
+	return s.copy[slot];
+}
+
+::RID unused_slot_buffer(int slot) {
+	State &s = S();
+	if (s.unused[slot].index == 0) {
+		s.unused[slot] = ctx().dev->storage_buffer_empty(16);
+		if (s.unused[slot].index == 0) {
+			set_error("unused slot buffer: " + ctx().dev->error());
+		}
+	}
+	return s.unused[slot];
 }
 
 ::RID tensor_set(::RID params, ::RID s0, ::RID s1, ::RID s2, ::RID dst) {
@@ -287,6 +320,12 @@ void release_kernels() {
 		drop(r);
 	}
 	for (::RID &r : s.slot_ubos) {
+		drop(r);
+	}
+	for (::RID &r : s.unused) {
+		drop(r);
+	}
+	for (::RID &r : s.copy) {
 		drop(r);
 	}
 	drop(s.params);
