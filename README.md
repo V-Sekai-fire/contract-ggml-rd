@@ -4,7 +4,7 @@ The ggml backend on the engine's rendering device for sandbox guests: Lean-emitt
 
 ## What it is for
 
-It is the route by which ggml reaches the GPU inside sandbox guests, so no guest carries a tensor runtime of its own. RFD 2290 owns that decision.
+It is the route by which ggml reaches the GPU inside sandbox guests, so no guest carries a tensor runtime of its own. RFD66606-2290 owns that decision.
 
 ## Build
 
