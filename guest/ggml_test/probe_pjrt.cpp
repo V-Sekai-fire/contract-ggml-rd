@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -795,6 +796,226 @@ bool probe_backend(const std::string &arg_which) {
 	return ok;
 }
 
+
+enum class StablehloDtype { F32, BF16 };
+
+struct StablehloArg {
+	StablehloDtype dtype;
+	int count;
+	const unsigned char *bytes;
+	size_t size;
+};
+
+struct StablehloCase {
+	const char *name;
+	const char *hlo;
+	const char *bad;
+	const StablehloArg *args;
+	int nargs;
+	const unsigned char *out;
+	size_t out_size;
+	StablehloDtype out_dtype;
+	const char *note;
+	const char *xfail; // why the output is not bit-equal to XLA CPU's; nullptr when it must be
+};
+
+#include "stablehlo_cases.inc"
+
+float element(const unsigned char *p, StablehloDtype d, size_t i) {
+	if (d == StablehloDtype::F32) {
+		float f;
+		std::memcpy(&f, p + i * 4, 4);
+		return f;
+	}
+	uint16_t h;
+	std::memcpy(&h, p + i * 2, 2);
+	const uint32_t w = uint32_t(h) << 16;
+	float f;
+	std::memcpy(&f, &w, 4);
+	return f;
+}
+
+// The bits of a float mapped so that adjacent values are adjacent integers.
+int64_t ordered(float f, StablehloDtype d) {
+	uint32_t w;
+	std::memcpy(&w, &f, 4);
+	if (d == StablehloDtype::BF16) {
+		w >>= 16;
+		const int64_t sign = (w & 0x8000u) != 0 ? -1 : 1;
+		return sign * int64_t(w & 0x7fffu);
+	}
+	const int64_t sign = (w & 0x80000000u) != 0 ? -1 : 1;
+	return sign * int64_t(w & 0x7fffffffu);
+}
+
+struct Compared {
+	size_t n = 0;
+	size_t differing = 0;
+	int64_t max_ulp = 0;
+	double rel_l2 = 0.0;
+};
+
+Compared compare_to(const unsigned char *want, const std::vector<uint8_t> &got, size_t want_size, StablehloDtype d) {
+	Compared c;
+	if (got.size() != want_size) {
+		c.n = want_size;
+		c.differing = want_size;
+		c.max_ulp = INT64_MAX;
+		c.rel_l2 = 1.0;
+		return c;
+	}
+	const size_t esz = d == StablehloDtype::F32 ? 4 : 2;
+	c.n = want_size / esz;
+	double num = 0.0;
+	double den = 0.0;
+	for (size_t i = 0; i < c.n; ++i) {
+		const float w = element(want, d, i);
+		const float g = element(got.data(), d, i);
+		if (std::memcmp(want + i * esz, got.data() + i * esz, esz) != 0) {
+			++c.differing;
+			c.max_ulp = std::max<int64_t>(c.max_ulp, std::llabs(ordered(w, d) - ordered(g, d)));
+		}
+		num += (double(g) - double(w)) * (double(g) - double(w));
+		den += double(w) * double(w);
+	}
+	c.rel_l2 = den > 0.0 ? std::sqrt(num / den) : (num > 0.0 ? 1.0 : 0.0);
+	return c;
+}
+
+struct Refusal {
+	const char *name;
+	const char *body; // the statements of @main, after its parameter %arg0: tensor<4xf32>
+	PJRT_Error_Code code;
+};
+
+// Valid StableHLO outside what the lowering handles, and malformed text, must each come back as a
+// specific error from Compile and never reach ggml.
+size_t probe_refusals(PJRT_Client *client, size_t *total) {
+	static const Refusal kRefusals[] = {
+		{ "unsupported_op", "%0 = stablehlo.sine %arg0 : tensor<4xf32>\n    return %0 : tensor<4xf32>", PJRT_Error_Code_UNIMPLEMENTED },
+		{ "hex_constant", "%0 = stablehlo.constant dense<0x7F800000> : tensor<f32>\n    %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<4xf32>\n    return %1 : tensor<4xf32>", PJRT_Error_Code_UNIMPLEMENTED },
+		{ "shape_mismatch", "%0 = stablehlo.add %arg0, %arg0 : tensor<5xf32>\n    return %0 : tensor<5xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
+		{ "wrong_declared_type", "%0 = stablehlo.negate %arg0 : tensor<5xf32>\n    return %0 : tensor<5xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
+		{ "undefined_operand", "%0 = stablehlo.add %arg0, %nope : tensor<4xf32>\n    return %0 : tensor<4xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
+		{ "no_return", "%0 = stablehlo.negate %arg0 : tensor<4xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
+		{ "returns_parameter", "return %arg0 : tensor<4xf32>", PJRT_Error_Code_UNIMPLEMENTED },
+		{ "garbage_statement", "this is not a statement", PJRT_Error_Code_INVALID_ARGUMENT },
+		{ "bad_broadcast", "%0 = stablehlo.broadcast_in_dim %arg0, dims = [1] : (tensor<4xf32>) -> tensor<4x4xf32>\n    %1 = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<4xf32>) -> tensor<4x4xf32>\n    return %1 : tensor<4x4xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
+		{ "reshape_count", "%0 = stablehlo.reshape %arg0 : (tensor<4xf32>) -> tensor<5xf32>\n    return %0 : tensor<5xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
+	};
+	static const char *kWholeModules[][2] = {
+		{ "integer_type", "module @m {\n  func.func public @main(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {\n    %0 = stablehlo.negate %arg0 : tensor<4xi32>\n    return %0 : tensor<4xi32>\n  }\n}" },
+		{ "rank_five", "module @m {\n  func.func public @main(%arg0: tensor<1x1x1x1x4xf32>) -> (tensor<1x1x1x1x4xf32>) {\n    %0 = stablehlo.negate %arg0 : tensor<1x1x1x1x4xf32>\n    return %0 : tensor<1x1x1x1x4xf32>\n  }\n}" },
+		{ "dynamic_shape", "module @m {\n  func.func public @main(%arg0: tensor<?xf32>) -> (tensor<?xf32>) {\n    %0 = stablehlo.negate %arg0 : tensor<?xf32>\n    return %0 : tensor<?xf32>\n  }\n}" },
+		{ "two_functions", "module @m {\n  func.func public @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    %0 = stablehlo.negate %arg0 : tensor<4xf32>\n    return %0 : tensor<4xf32>\n  }\n  func.func private @helper(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    return %arg0 : tensor<4xf32>\n  }\n}" },
+	};
+	size_t held = 0;
+	std::vector<std::pair<std::string, std::pair<std::string, PJRT_Error_Code> > > all;
+	for (const Refusal &r : kRefusals) {
+		all.push_back({ r.name, { std::string("module @m {\n  func.func public @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    ") + r.body + "\n  }\n}", r.code } });
+	}
+	for (const char *const *w : kWholeModules) {
+		all.push_back({ w[0], { w[1], std::strstr(w[0], "two_functions") != nullptr || std::strstr(w[0], "dynamic") != nullptr || std::strstr(w[0], "integer") != nullptr || std::strstr(w[0], "rank") != nullptr ? PJRT_Error_Code_UNIMPLEMENTED : PJRT_Error_Code_INVALID_ARGUMENT } });
+	}
+	for (const std::pair<std::string, std::pair<std::string, PJRT_Error_Code> > &r : all) {
+		PJRT_Program prog;
+		std::memset(&prog, 0, sizeof prog);
+		prog.struct_size = PJRT_Program_STRUCT_SIZE;
+		prog.code = const_cast<char *>(r.second.first.data());
+		prog.code_size = r.second.first.size();
+		prog.format = "mlir";
+		prog.format_size = 4;
+		PJRT_ARGS(PJRT_Client_Compile_Args, cc);
+		cc.client = client;
+		cc.program = &prog;
+		PJRT_Error_Code got = PJRT_Error_Code_OK;
+		const std::string msg = take(g_api->PJRT_Client_Compile(&cc), &got);
+		const bool ok = !msg.empty() && got == r.second.second;
+		held += ok ? 1 : 0;
+		std::printf("PROBE pjrt stablehlo refusal %-20s %s code=%d wanted=%d %.100s\n", r.first.c_str(), ok ? "held  " : "FAILED", int(got), int(r.second.second), msg.c_str());
+	}
+	*total = all.size();
+	return held;
+}
+
+// Real StableHLO from JAX, compiled and executed through the C API, against the output XLA's CPU
+// backend gave for the same module. A mutated module is the control: it must be refused or give
+// another output.
+bool probe_stablehlo(const std::string &which) {
+	ggml_backend_reg_t reg = ggml_backend_rd_reg();
+	if (ggml_backend_reg_dev_count(reg) == 0) {
+		std::printf("PROBE pjrt stablehlo: no RD device\n");
+		return false;
+	}
+	ggml_backend_t be = ggml_backend_dev_init(ggml_backend_reg_dev_get(reg, 0), nullptr);
+	pjrt_rd::attach(be);
+	g_api = GetPjrtApi();
+	PJRT_Client *client = make_client();
+	bool ok = client != nullptr;
+	size_t ran = 0, bit_equal = 0, expected_failures = 0, controls_held = 0;
+	{
+		std::vector<uint8_t> flipped(kStablehloCases[0].out, kStablehloCases[0].out + kStablehloCases[0].out_size);
+		flipped[0] ^= 1;
+		const Compared self = compare_to(kStablehloCases[0].out, flipped, flipped.size(), kStablehloCases[0].out_dtype);
+		std::printf("PROBE pjrt stablehlo compare control: one flipped bit is seen as %zu differing element(s) (must be 1)\n", self.differing);
+		ok = ok && self.differing == 1;
+	}
+	for (const StablehloCase &c : kStablehloCases) {
+		if (client == nullptr || (which != "all" && which != c.name)) {
+			continue;
+		}
+		std::vector<PJRT_Buffer *> bufs;
+		for (int k = 0; k < c.nargs; ++k) {
+			bufs.push_back(upload(client, c.args[k].bytes, c.args[k].size));
+		}
+		const Run good = execute(client, c.hlo, bufs, 1);
+		Compared cmp;
+		if (good.ok && good.out.size() == 1) {
+			cmp = compare_to(c.out, good.out[0], c.out_size, c.out_dtype);
+		} else {
+			cmp.n = c.out_size;
+			cmp.differing = c.out_size;
+			cmp.max_ulp = INT64_MAX;
+			cmp.rel_l2 = 1.0;
+		}
+		const Run bad = execute(client, c.bad, bufs, 1);
+		const bool control = !bad.ok || bad.out.size() != 1 || compare_to(c.out, bad.out[0], c.out_size, c.out_dtype).differing != 0;
+		const bool bits = good.ok && cmp.differing == 0;
+		const double bar = c.out_dtype == StablehloDtype::F32 ? 1e-4 : 1e-3; // the oracle bar of the graph probes
+		const bool functional = good.ok && cmp.rel_l2 <= bar;
+		++ran;
+		bit_equal += bits ? 1 : 0;
+		expected_failures += c.xfail != nullptr ? 1 : 0;
+		controls_held += control ? 1 : 0;
+		std::printf("PROBE pjrt stablehlo %-22s ran=%d bit_equal=%d differing=%zu/%zu max_ulp=%lld rel_l2=%.3e control=%s%s%s\n", c.name,
+				good.ok ? 1 : 0, bits ? 1 : 0, cmp.differing, cmp.n, (long long)cmp.max_ulp, cmp.rel_l2, control ? "held" : "FAILED",
+				good.ok ? "" : " error=", good.ok ? "" : good.error.c_str());
+		if (c.xfail != nullptr) {
+			std::printf("PROBE pjrt stablehlo %-22s expected not bit-equal (%s); functional bar %.0e %s\n", c.name, c.xfail, bar,
+					bits ? "NOT NEEDED: it is bit-equal now, so remove it from XFAIL" : (functional ? "met" : "NOT MET"));
+			ok = ok && !bits && functional && control;
+		} else {
+			ok = ok && bits && control;
+		}
+		for (PJRT_Buffer *b : bufs) {
+			drop(b);
+		}
+	}
+	size_t refusals = 0, refusals_held = 0;
+	if (client != nullptr && which == "all") {
+		refusals_held = probe_refusals(client, &refusals);
+		ok = ok && refusals_held == refusals;
+	}
+	std::printf("PROBE pjrt stablehlo refusals held=%zu/%zu\n", refusals_held, refusals);
+	std::printf("PROBE pjrt stablehlo SUMMARY cases=%zu bit_equal=%zu expected_not_bit_equal=%zu controls_held=%zu\n", ran, bit_equal, expected_failures, controls_held);
+	if (client != nullptr) {
+		destroy_client(client);
+	}
+	pjrt_rd::attach(nullptr);
+	ggml_backend_free(be);
+	return ok && ran > 0;
+}
+
 } // namespace
 
 bool pjrt_probe(const std::string &arg) {
@@ -811,6 +1032,9 @@ bool pjrt_probe(const std::string &arg) {
 		pjrt_rd::attach(nullptr);
 		ggml_backend_free(be);
 		return ok;
+	}
+	if (arg.compare(0, 10, "stablehlo:") == 0) {
+		return probe_stablehlo(arg.substr(10));
 	}
 	if (arg.compare(0, 5, "cast:") == 0) {
 		return probe_cast(arg.substr(5));

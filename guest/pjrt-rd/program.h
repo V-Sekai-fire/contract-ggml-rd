@@ -34,7 +34,12 @@ struct TensorRec {
 };
 
 struct Program {
+	struct Const {
+		int id = -1; // the record this leaf's bytes belong to
+		std::vector<uint8_t> bytes;
+	};
 	std::vector<TensorRec> t;
+	std::vector<Const> consts; // leaves that are not arguments: data the module itself carries
 	std::vector<int> args; // ids of the ggml.arg records, in argument order
 	std::vector<int> outs; // ids of the results, in result order
 };
