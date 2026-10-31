@@ -20,7 +20,9 @@
 //   and a second elision run, every output bit for bit; then the control, one
 //   run per barrier elision placed (at most 48, spread) with
 //   GGML_RD_DROP_BARRIER=k, each compared bit for bit with the barrier-all
-//   outputs: a run that differs has "detected" its dropped barrier. Before
+//   outputs: a run that differs has "detected" its dropped barrier. The sweep
+//   runs with GGML_RD_NO_ALIAS_COPY=1, because an alias copy ends the compute
+//   list and so hides a dropped barrier in front of it. Before
 //   every RD run the graph's compute buffers are cleared to 0, so a read
 //   that races its producer sees zeros, not the previous run's result.
 //
@@ -167,6 +169,8 @@ bool graph_one(const std::string &which, int res) {
 	Outs rd_nat, rd_all, rd_again, rd_f32;
 	RunInfo r_el, r_all, r_again, r_f32;
 	int drops_run = 0, drops_detected = 0;
+	Outs rd_inplace;
+	RunInfo r_inplace;
 	int nodes = 0;
 	{
 		Net n;
@@ -197,8 +201,12 @@ bool graph_one(const std::string &which, int res) {
 					g, nodes, (long long)r_el.dispatches, (long long)r_el.barriers, (long long)r_all.barriers,
 					(long long)r_el.compute_us, (long long)r_el.frames, (t_el_end - t_el) / 1000.0, int(r_el.st),
 					int(r_all.st), int(r_again.st));
+			// An alias copy ends the compute list before its dispatch, which orders everything around
+			// it, so the control runs in place, where only the barriers order the dispatches.
+			set_env("GGML_RD_NO_ALIAS_COPY", "1");
+			r_inplace = run(n, rd_inplace, true);
 			// The control: leave out one barrier elision placed.
-			const int64_t nb = r_el.barriers;
+			const int64_t nb = r_inplace.barriers;
 			std::vector<int64_t> ks;
 			const int64_t kmax = 48;
 			for (int64_t i = 0; i < std::min(nb, kmax); ++i) {
@@ -217,6 +225,7 @@ bool graph_one(const std::string &which, int res) {
 						g, (long long)k, (long long)rk.barriers, same ? 0 : 1, differing, rl, rk.dropped.c_str());
 			}
 			set_env("GGML_RD_DROP_BARRIER", nullptr);
+			set_env("GGML_RD_NO_ALIAS_COPY", nullptr);
 		} catch (const std::exception &e) {
 			std::printf("PROBE graph %s: %s\n", g, e.what());
 			ok = false;
@@ -262,6 +271,21 @@ bool graph_one(const std::string &which, int res) {
 	size_t d_all = 0, d_again = 0;
 	const bool same_all = identical(rd_nat, rd_all, &d_all);
 	const bool same_again = identical(rd_nat, rd_again, &d_again);
+	size_t d_inplace = 0;
+	const bool same_inplace = identical(rd_nat, rd_inplace, &d_inplace);
+	size_t nonzero = 0;
+	for (const std::pair<std::string, std::vector<float>> &x : rd_nat) {
+		if (x.first != "__residual_in") {
+			for (float f : x.second) {
+				nonzero += f != 0.0f;
+			}
+		}
+	}
+	std::printf("PROBE graph %s in_place_vs_barrier_all=%s (differing %zu) in_place_barriers=%lld nonzero_reference_elements=%zu\n", g,
+			same_inplace ? "bit-identical" : "DIFFERENT", d_inplace, (long long)r_inplace.barriers, nonzero);
+	if (nonzero == 0) {
+		std::printf("PROBE graph %s FAIL: the reference output is all zeros, so no comparison here proves anything\n", g);
+	}
 	const bool fin = all_finite(rd_nat) && all_finite(rd_f32);
 	// The dropped-barrier control needs a barrier to drop. A run with none in
 	// either arm is the CPU fallback (one dispatch after another, nothing to
@@ -283,7 +307,7 @@ bool graph_one(const std::string &which, int res) {
 									   std::to_string(27 * shell_coords().size() / 3))
 									  .c_str()
 							 : "");
-	return ok && fin && same_all && same_again && pass_ctl && r_el.st == GGML_STATUS_SUCCESS &&
+	return ok && fin && same_all && same_again && same_inplace && nonzero > 0 && pass_ctl && r_el.st == GGML_STATUS_SUCCESS &&
 			r_all.st == GGML_STATUS_SUCCESS && r_again.st == GGML_STATUS_SUCCESS && r_f32.st == GGML_STATUS_SUCCESS;
 }
 
