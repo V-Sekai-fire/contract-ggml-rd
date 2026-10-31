@@ -27,3 +27,14 @@ exactly 3000. On the real table the ladder ends `provablyNone` over all 4096 hyp
 wrong in 1,959 of 8,192 entries. table_dag.py hash-conses the table into a decision DAG with relative values:
 splitting the index from its high bit gives 186 distinct nodes (binade 127) and 167 (binade 128), where the low bit
 first gives 2,368 and 2,059. That DAG is the compact form of the ROM, about 350 nodes in all.
+
+Web search for a closed form (2026-10-31). Search engines (Bing, DuckDuckGo, Mojeek) refuse scripted queries; Stack Exchange
+and Sourcegraph answered. Nothing publishes AMD's table or rule. What exists:
+
+- Bochs (cpu/sse_rcp.cc, Stanislav Shwartsman, LGPL) emulates Intel's rcpps and rsqrtps with a 2048-entry rcp table and two
+  1024-entry rsqrt tables, and states the rule: the result is 1/(1.yyyyyyyyyy1) rounded to nearest, the index plus a trailing 1,
+  i.e. the function at the interval midpoint. intel_closed_form.py checks it against Bochs's tables: round(1/sqrt(midpoint)) to
+  13 bits gives 0 mismatches of 1024 in both tables (11 and 12 bits: 764 and 502). Intel's rsqrtps therefore has a closed form.
+- AMD's is a 4096-entry table (12-bit index), not Intel's 1024. The same rule at 12 bits leaves about 1,100 of 4,096 wrong
+  (see above), and amd_from_intel.py (Intel-style midpoint nodes interpolated four ways) leaves 2,118 of 8,192 wrong.
+- Stack Overflow 13102167 confirms the two vendors return different rcpps and rsqrtps values.
