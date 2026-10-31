@@ -19,3 +19,11 @@ What was tried to turn the estimate table into a formula (all measured on the 2 
 - Tangent lines of the exact function: about 980 wrong at every block size.
 
 What holds: every run of 8 consecutive entries is the floor of a straight line (floor_of_line.py: 512 of 512 for G=8), the 512 runs have only 18 (127) and 15 (128) distinct shapes (block_shapes.py), and the offsets of runs drift smoothly with a +-1 toggle on bit 3 of the index. That is a ROM of about 512 (base, slope) pairs per binade, not an arithmetic formula.
+
+A witness search with V-Sekai-fire/plausible-witness-dag (witness/, `lake exe rsqrt_witness`): hypotheses are indices
+into three families (floor of node interpolation, of the tangent line, of the exact function on a coarser index grid),
+and the predicate is "reproduces all 2 x 4096 entries". A planted control (a table made by index 3000) is found at
+exactly 3000. On the real table the ladder ends `provablyNone` over all 4096 hypotheses; the closest, index 2627, is
+wrong in 1,959 of 8,192 entries. table_dag.py hash-conses the table into a decision DAG with relative values:
+splitting the index from its high bit gives 186 distinct nodes (binade 127) and 167 (binade 128), where the low bit
+first gives 2,368 and 2,059. That DAG is the compact form of the ROM, about 350 nodes in all.
