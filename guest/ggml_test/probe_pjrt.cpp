@@ -11,6 +11,8 @@
 //                         and a wrong argument count must each be refused or differ.
 #include <api.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,6 +20,8 @@
 #include <vector>
 
 #include "ggml-backend.h"
+#include "ggml-cpu.h"
+#include "ggml-pjrt.h"
 #include "ggml-rd.h"
 #include "ggml.h"
 #include "graph_nets.h"
@@ -320,7 +324,38 @@ Run execute(PJRT_Client *client, const std::string &text, const std::vector<PJRT
 	return r;
 }
 
-bool probe_graph_through_pjrt(const std::string &which) {
+
+// A reference that is all zeros compares nothing: two zero outputs are bit-identical for any
+// plugin. Fail loudly instead.
+bool output_is_dead(const Outs &o, const std::string &who) {
+	for (const std::pair<std::string, std::vector<float>> &x : o) {
+		if (x.first == "__residual_in") {
+			continue;
+		}
+		size_t nz = 0;
+		for (float f : x.second) {
+			nz += f != 0.0f;
+		}
+		std::printf("PROBE pjrt %s reference output %s: n=%zu nonzero=%zu\n", who.c_str(), x.first.c_str(), x.second.size(), nz);
+		if (nz == 0) {
+			std::printf("PROBE pjrt %s FAIL: the reference output %s is all zeros, so a match proves nothing "
+						"(try the f32 arm: %s:f32)\n", who.c_str(), x.first.c_str(), who.c_str());
+			return true;
+		}
+	}
+	return false;
+}
+
+// "name:f32" runs the f32-weight arm of the graph, "name" the bf16 one.
+std::string split_arm(const std::string &which, bool *f32) {
+	const std::string suffix = ":f32";
+	*f32 = which.size() > suffix.size() && which.compare(which.size() - suffix.size(), suffix.size(), suffix) == 0;
+	return *f32 ? which.substr(0, which.size() - suffix.size()) : which;
+}
+
+bool probe_graph_through_pjrt(const std::string &arg_which) {
+	bool f32 = false;
+	const std::string which = split_arm(arg_which, &f32);
 	BuildFn build;
 	std::string native, resid;
 	if (!graph_builder(which, 0, build, native, resid)) {
@@ -336,7 +371,7 @@ bool probe_graph_through_pjrt(const std::string &which) {
 	Net n;
 	n.be = ggml_backend_dev_init(ggml_backend_reg_dev_get(reg, 0), nullptr);
 	n.rd = true;
-	build(n, false);
+	build(n, f32);
 	if (!allocate(n)) {
 		return false;
 	}
@@ -346,6 +381,9 @@ bool probe_graph_through_pjrt(const std::string &which) {
 		return false;
 	}
 	const Outs direct = read_outs(n);
+	if (output_is_dead(direct, "graph " + arg_which)) {
+		return false;
+	}
 	const int64_t t_direct = rdc::host_usec();
 
 	std::vector<ggml_tensor *> outs;
@@ -443,6 +481,159 @@ bool probe_graph_through_pjrt(const std::string &which) {
 	return ok;
 }
 
+
+// A Net on the ggml-pjrt backend (its device is the plugin, whose device is ggml-rd): the same
+// leaves and graph as the direct run, every output bit for bit. Controls: a partial write to a
+// weight must change the result and writing the bytes back must restore it, and a second
+// compute must upload nothing.
+
+
+bool probe_backend(const std::string &arg_which) {
+	bool f32 = false;
+	const std::string which = split_arm(arg_which, &f32);
+	BuildFn build;
+	std::string native, resid;
+	if (!graph_builder(which, 0, build, native, resid)) {
+		std::printf("PROBE pjrt backend: unknown graph '%s'\n", which.c_str());
+		return false;
+	}
+	ggml_backend_reg_t reg = ggml_backend_rd_reg();
+	if (ggml_backend_reg_dev_count(reg) == 0) {
+		std::printf("PROBE pjrt backend %s: no RD device\n", which.c_str());
+		return false;
+	}
+	const int64_t t0 = rdc::host_usec();
+	Net direct;
+	direct.be = ggml_backend_dev_init(ggml_backend_reg_dev_get(reg, 0), nullptr);
+	direct.rd = true;
+	build(direct, f32);
+	if (!allocate(direct)) {
+		return false;
+	}
+	ggml_backend_rd_ensure_idle();
+	if (ggml_backend_graph_compute(direct.be, direct.gf) != GGML_STATUS_SUCCESS) {
+		std::printf("PROBE pjrt backend %s: the direct run failed\n", which.c_str());
+		return false;
+	}
+	const Outs want = read_outs(direct);
+	if (output_is_dead(want, "backend " + arg_which)) {
+		return false;
+	}
+	const int64_t t_direct = rdc::host_usec();
+	{
+		for (const std::pair<std::string, std::vector<float>> &o : want) {
+			size_t nz = 0;
+			double sum = 0.0;
+			for (float f : o.second) {
+				nz += f != 0.0f;
+				sum += std::fabs(double(f));
+			}
+			std::printf("PROBE pjrt backend %s output %-14s n=%zu nonzero=%zu mean_abs=%.4e\n", which.c_str(), o.first.c_str(), o.second.size(), nz,
+					o.second.empty() ? 0.0 : sum / double(o.second.size()));
+		}
+	}
+
+	pjrt_rd::attach(direct.be);
+	g_api = GetPjrtApi();
+	if (!ggml_backend_pjrt_attach(g_api)) {
+		std::printf("PROBE pjrt backend %s: attach failed: %s\n", which.c_str(), ggml_backend_pjrt_last_error().c_str());
+		return false;
+	}
+	bool ok = true;
+	{
+		Net p;
+		p.be = ggml_backend_dev_init(ggml_backend_reg_dev_get(ggml_backend_pjrt_reg(), 0), nullptr);
+		p.rd = false;
+		if (p.be == nullptr) {
+			std::printf("PROBE pjrt backend %s: no PJRT device\n", which.c_str());
+			return false;
+		}
+		build(p, f32);
+		if (!allocate(p)) {
+			std::printf("PROBE pjrt backend %s: allocation failed: %s\n", which.c_str(), ggml_backend_pjrt_last_error().c_str());
+			return false;
+		}
+		const int64_t t_alloc = rdc::host_usec();
+		const ggml_status st = ggml_backend_graph_compute(p.be, p.gf);
+		const Outs got = read_outs(p);
+		size_t differing = 0;
+		const bool same = st == GGML_STATUS_SUCCESS && identical(got, want, &differing);
+		const std::string after_first = ggml_backend_pjrt_stats();
+		std::printf("PROBE pjrt backend %s first compute: status=%d identical=%d differing=%zu leaves=%zu\n", which.c_str(), int(st),
+				same ? 1 : 0, differing, p.leaves.size());
+		std::printf("PROBE pjrt backend %s stats after the first compute: %s\n", which.c_str(), after_first.c_str());
+
+		const int64_t up1 = [&]() {
+			const std::string s = after_first;
+			const size_t k = s.find("uploads=");
+			return int64_t(std::atoll(s.c_str() + k + 8));
+		}();
+		const ggml_status st2 = ggml_backend_graph_compute(p.be, p.gf);
+		const Outs got2 = read_outs(p);
+		const std::string after_second = ggml_backend_pjrt_stats();
+		const size_t k2 = after_second.find("uploads=");
+		const int64_t up2 = int64_t(std::atoll(after_second.c_str() + k2 + 8));
+		const bool again = st2 == GGML_STATUS_SUCCESS && identical(got2, want, nullptr) && up2 == up1;
+		std::printf("PROBE pjrt backend %s second compute: identical=%d uploads %lld -> %lld (must not grow)\n", which.c_str(),
+				identical(got2, want, nullptr) ? 1 : 0, (long long)up1, (long long)up2);
+
+		size_t tried = 0, moved = 0, restored = 0;
+		std::string moved_names;
+		for (size_t i = 0; i < p.leaves.size() && tried < 40; ++i) {
+			ggml_tensor *w = p.leaves[i].t;
+			if (w == p.residual_in || ggml_nbytes(w) < 64 || w->type == GGML_TYPE_I32) {
+				continue;
+			}
+			uint8_t keep[4];
+			ggml_backend_tensor_get(w, keep, 8, 4);
+			// 1.0 in the leaf's own type: a flipped exponent bit on a zero weight is 1e-19 and vanishes in an f32 sum.
+			uint8_t bent[4] = { 0x00, 0x00, 0x80, 0x3f };
+			if (w->type == GGML_TYPE_BF16) {
+				bent[0] = 0x80;
+				bent[1] = 0x3f;
+				bent[2] = 0x80;
+				bent[3] = 0x3f;
+			}
+			ggml_backend_tensor_set(w, bent, 8, 4);
+			ggml_backend_graph_compute(p.be, p.gf);
+			const bool changed = !identical(read_outs(p), want, nullptr);
+			{
+				const Outs now = read_outs(p);
+				double worst = 0.0;
+				for (size_t k = 0; k < now[0].second.size(); ++k) {
+					worst = std::max(worst, std::fabs(double(now[0].second[k]) - double(want[0].second[k])));
+				}
+				std::printf("PROBE pjrt backend %s leaf %-34s type=%s bytes=%zu changed=%d worst_abs_diff=%.3e\n", which.c_str(), w->name,
+						ggml_type_name(w->type), ggml_nbytes(w), changed ? 1 : 0, worst);
+			}
+			ggml_backend_tensor_set(w, keep, 8, 4);
+			ggml_backend_graph_compute(p.be, p.gf);
+			const bool back = identical(read_outs(p), want, nullptr);
+			++tried;
+			moved += changed ? 1 : 0;
+			restored += back ? 1 : 0;
+			if (changed && moved_names.size() < 200) {
+				moved_names += std::string(moved_names.empty() ? "" : ", ") + w->name;
+			}
+		}
+		std::printf("PROBE pjrt backend %s control: a 4-byte write to %zu weights changed the result for %zu (must be > 0); writing the bytes back "
+					"restored it for %zu of %zu; moved by: %s\n", which.c_str(), tried, moved, restored, tried, moved_names.c_str());
+		const std::string end_stats = ggml_backend_pjrt_stats();
+		std::printf("PROBE pjrt backend %s final stats: %s\n", which.c_str(), end_stats.c_str());
+		ok = same && again && moved > 0 && restored == tried && tried > 0;
+		std::printf("PROBE pjrt backend %s SUMMARY identical=%d second_compute_clean=%d changed=%zu/%zu restored=%zu/%zu alloc_ms=%.1f "
+					"first_compute_ms=%.1f direct_ms=%.1f\n", which.c_str(), same ? 1 : 0, again ? 1 : 0, moved, tried, restored, tried,
+				(t_alloc - t_direct) / 1000.0, (rdc::host_usec() - t_alloc) / 1000.0, (t_direct - t0) / 1000.0);
+		ggml_backend_free(p.be);
+		p.be = nullptr;
+	}
+	ggml_backend_pjrt_detach();
+	pjrt_rd::attach(nullptr);
+	ggml_backend_free(direct.be);
+	direct.be = nullptr;
+	return ok;
+}
+
 } // namespace
 
 bool pjrt_probe(const std::string &arg) {
@@ -459,6 +650,9 @@ bool pjrt_probe(const std::string &arg) {
 		pjrt_rd::attach(nullptr);
 		ggml_backend_free(be);
 		return ok;
+	}
+	if (arg.compare(0, 8, "backend:") == 0) {
+		return probe_backend(arg.substr(8));
 	}
 	return probe_graph_through_pjrt(arg);
 }
