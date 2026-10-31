@@ -23,7 +23,6 @@ XFAIL = {
     "mean_last": "a float sum whose XLA CPU order is not reproduced (see reduce_sum_random), then a divide",
     "softmax_f32": "contains exp, whose XLA CPU result is not the correctly rounded value, and a float sum whose XLA CPU order is not reproduced (see reduce_sum_random)",
     "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random) and rsqrt (see rsqrt_f32)",
-    "sign_special": "ggml's SGN returns +0 for -0, as ggml-cpu does, and XLA returns -0 (one element of 16; every other value is exact)",
     "mlp_f32": "contains exp, whose XLA CPU result is not the correctly rounded value",
 }
 
@@ -38,6 +37,19 @@ def rand(rng, shape, scale=1.0):
 
 def positive(rng, shape):
     return (rng.random(shape) * 3.0 + 0.25).astype(np.float32)
+
+
+def tree_sum(a):
+    """Sum the last axis in a pinned order: lane i plus lane i + n/2, halving until one is left.
+
+    The adds are explicit slices added together. A chain of reduces would not hold: XLA's
+    simplifier merges it into one reduce-window and the order changes, because StableHLO leaves
+    the order of a reduce unspecified. An add of two slices it keeps as written.
+    """
+    while a.shape[-1] > 1:
+        h = a.shape[-1] // 2
+        a = a[..., :h] + a[..., h:]
+    return a[..., 0]
 
 
 def cases():
@@ -89,15 +101,19 @@ def cases():
     sq8 = ints(rng, (8, 8))
     add("abs_f32", lambda a: jnp.abs(a), [x], ("stablehlo.abs", "stablehlo.negate"), "exact elementwise")
     add("floor_f32", lambda a: jnp.floor(a), [rand(rng, (8, 16), 3.0)], ("stablehlo.floor", "stablehlo.negate"), "exact elementwise")
-    special = np.array([[-0.0, 0.0, -1.5, 2.5, np.inf, -np.inf, 1e-30, -1e-30], [3.0, -3.0, 0.5, -0.5, 7.25, -7.25, 100.0, -100.0]], np.float32)
+    special = np.array([[-0.0, 0.0, -1.5, 2.5, np.inf, -np.inf, 1e-30, -1e-30], [3.0, -3.0, 0.5, -0.5, 7.25, -7.25, 1e-45, -1e-45]], np.float32)
     add("sign_f32", lambda a: jnp.sign(a), [rand(rng, (8, 16), 3.0)], ("stablehlo.sign", "stablehlo.negate"), "exact elementwise")
-    add("sign_special", lambda a: jnp.sign(a), [special], ("stablehlo.sign", "stablehlo.negate"), "sign of zeros, infinities and small values")
+    add("sign_special", lambda a: jnp.sign(a), [special], ("stablehlo.sign", "stablehlo.negate"), "sign of zeros, infinities, small values and denormals")
+    add("recip_special", lambda a: 1.0 / a, [special], ("stablehlo.divide", "stablehlo.multiply"), "one over zeros, infinities and small values")
     add("slice_basic", lambda a: a[1:5, 2:6], [rand(rng, (6, 8))], ("[1:5, 2:6]", "[2:6, 1:5]"), "static slice")
     add("slice_strided", lambda a: a[::2, 1::3], [rand(rng, (6, 8))], ("[0:6:2, 1:8:3]", "[1:6:2, 1:8:3]"), "strided slice")
     add("slice_3d", lambda a: a[:, 1:3, ::2], [rand(rng, (2, 4, 6))], ("[0:2, 1:3, 0:6:2]", "[0:2, 0:2, 0:6:2]"), "slice of a rank-3 array")
     add("concat_dim1", lambda a, b: jnp.concatenate([a, b], axis=1), [rand(rng, (6, 8)), rand(rng, (6, 8))], ("%arg0, %arg1, dim = 1", "%arg1, %arg0, dim = 1"), "concatenate")
     add("concat_dim0_three", lambda a, b, c: jnp.concatenate([a, b, c], axis=0), [rand(rng, (2, 5)), rand(rng, (3, 5)), rand(rng, (1, 5))], ("%arg0, %arg1, %arg2", "%arg2, %arg1, %arg0"), "concatenate three operands")
     add("pad_edges", lambda a: jax.lax.pad(a, np.float32(0), ((1, 2, 0), (3, 0, 0))), [rand(rng, (6, 8))], ("low = [1, 3], high = [2, 0]", "low = [2, 3], high = [1, 0]"), "pad with zeros")
+    add("pinned_sum_tree", lambda a: tree_sum(a) + 1.0, [rand(rng, (8, 64))], ("stablehlo.add %", "stablehlo.subtract %"), "float sum with the order pinned by explicit slice adds")
+    add("pinned_mean", lambda a: tree_sum(a) / 64.0, [rand(rng, (8, 64))], ("stablehlo.divide", "stablehlo.multiply"), "mean with the order pinned")
+    add("pinned_rms_scale", lambda a: jnp.sqrt(tree_sum(a * a) / 64.0 + 1e-6), [rand(rng, (8, 64))], ("stablehlo.sqrt", "stablehlo.negate"), "sqrt(mean(a*a) + eps) with the order pinned; dividing by it is rewritten to rsqrt by XLA")
     add("reduce_sum_exact", lambda a: a.sum(axis=-1), [sq8], ("dimensions = [1]", "dimensions = [0]"), "reduce add, integer-valued: every partial sum is exact")
     add("reduce_sum_first", lambda a: a.sum(axis=0), [ints(rng, (8, 8))], ("dimensions = [0]", "dimensions = [1]"), "reduce add over the leading dimension")
     cube = ints(rng, (3, 3, 3))
