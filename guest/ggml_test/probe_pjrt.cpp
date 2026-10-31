@@ -998,6 +998,20 @@ bool probe_stablehlo(const std::string &which) {
 		std::printf("PROBE pjrt stablehlo %-22s ran=%d bit_equal=%d differing=%zu/%zu max_ulp=%lld rel_l2=%.3e control=%s%s%s\n", c.name,
 				good.ok ? 1 : 0, bits ? 1 : 0, cmp.differing, cmp.n, (long long)cmp.max_ulp, cmp.rel_l2, control ? "held" : "FAILED",
 				good.ok ? "" : " error=", good.ok ? "" : good.error.c_str());
+		if (good.ok && good.out.size() == 1 && cmp.differing != 0) {
+			// Name the first few elements that differ, with the bit patterns, so a failure can be read.
+			const size_t esz = c.out_dtype == StablehloDtype::F32 ? 4 : 2;
+			size_t shown = 0;
+			for (size_t i = 0; i * esz < c.out_size && i * esz < good.out[0].size() && shown < 4; ++i) {
+				if (std::memcmp(c.out + i * esz, good.out[0].data() + i * esz, esz) != 0) {
+					uint32_t want_bits = 0, got_bits = 0;
+					std::memcpy(&want_bits, c.out + i * esz, esz);
+					std::memcpy(&got_bits, good.out[0].data() + i * esz, esz);
+					std::printf("PROBE pjrt stablehlo %-22s   element %zu: XLA CPU %0*x, ggml-rd %0*x\n", c.name, i, int(esz * 2), want_bits, int(esz * 2), got_bits);
+					++shown;
+				}
+			}
+		}
 		if (c.xfail != nullptr) {
 			std::printf("PROBE pjrt stablehlo %-22s expected not bit-equal (%s); functional bar %.0e %s\n", c.name, c.xfail, bar,
 					bits ? "NOT NEEDED: it is bit-equal now, so remove it from XFAIL" : (functional ? "met" : "NOT MET"));

@@ -266,7 +266,17 @@ bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 	} else if (op == "floor") {
 		o.t = ggml_floor(L.ctx, f.t);
 	} else if (op == "sign") {
-		o.t = ggml_sgn(L.ctx, f.t);
+		// SGN gives a zero for a zero, but not a signed one: ggml-cpu returns +0 and ggml-rd -0, and XLA returns the
+		// zero it was given. Rebuild the sign with exact arithmetic that does not depend on it:
+		//   s = sgn(x), ss = s*s (1 for a nonzero, +0 for a zero), c = s + sgn(1/x) * (1 - ss), result = c * ss.
+		// c is +-1 with the sign of x everywhere (1/+-0 is +-inf), so c * (+0) at a zero is a zero with x's sign.
+		// A NaN gives 0, not NaN.
+		const Val ones = filled(L, f.shape, 1.0f);
+		ggml_tensor *sg = ggml_sgn(L.ctx, f.t);
+		ggml_tensor *ss = ggml_mul(L.ctx, sg, sg);
+		ggml_tensor *q = ggml_sgn(L.ctx, ggml_div(L.ctx, ones.t, f.t));
+		ggml_tensor *c = ggml_add(L.ctx, sg, ggml_mul(L.ctx, q, ggml_sub(L.ctx, ones.t, ss)));
+		o.t = ggml_mul(L.ctx, c, ss);
 	} else if (op == "rsqrt") {
 		o.t = ggml_div(L.ctx, filled(L, f.shape, 1.0f).t, ggml_sqrt(L.ctx, f.t));
 	} else {
