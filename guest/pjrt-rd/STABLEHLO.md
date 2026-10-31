@@ -14,15 +14,18 @@ Everything else. The error is `UNIMPLEMENTED` for valid StableHLO outside the li
 
 ## Bit equality with XLA CPU
 
-The probe compares every case with the output XLA's CPU backend gave for the same JAX module. 40 of 48 cases are bit-equal on the RTX 3090. Eight are not, and each carries its measured reason in `tools/gen_stablehlo_cases.py` (`XFAIL`). They must meet the functional bar (relative L2 of 1e-4 for f32, 1e-3 for bf16) and fail the probe if one becomes bit-equal, so the list only shrinks.
+The probe compares every case with the output XLA's CPU backend gave for the same JAX module. 47 of 54 cases are bit-equal on the RTX 3090. Seven are not, and each carries its measured reason in `tools/gen_stablehlo_cases.py` (`XFAIL`). They must meet the functional bar (relative L2 of 1e-4 for f32, 1e-3 for bf16) and fail the probe if one becomes bit-equal, so the list only shrinks.
 
 | Case | Why it is not bit-equal yet |
 |---|---|
-| exp, log | XLA CPU's results are approximations (9 and 18 of 128 elements differ from the correctly rounded value), and ggml-rd's differ from ggml-cpu's too (2168 and 2153 of 4096). Equality needs XLA's exact polynomial and its fused multiply-add use. |
 | rsqrt | XLA CPU's rsqrt differs from one over a square root in f32 in 1244 of 4096 elements and from the correctly rounded value in 737. |
 | reduce_sum_random, mean_last | XLA CPU's float summation order is an irregular tree that changes with the shape, the signature of LLVM reassociating an unrolled chain of adds. `tools/reveal_sum_order.py` reveals it (the FPRev method): `(((5+(3+4))+(2+(0+1)))+((10+(9+(8+(6+7))))+((14+15)+(13+(11+12)))))` for 8 rows of 16, and a different tree for 32, 48 and 64 elements. No closed-form order reproduces it; only a table of revealed trees per shape, tied to this CPU and XLA build, could. XLA lowers the reduce to one `vector.multi_reduction` (xla/backends/cpu/codegen/tiled), so the order is chosen after XLA's own code. ggml-rd sums 256 interleaved lanes. |
-| dot_batched | XLA CPU sums this dot with a separate rounding per multiply and add. Its unbatched dot, and ggml-rd's mul_mat, use fused multiply-add. |
-| softmax_f32, rms_norm_f32, mlp_f32 | each contains exp, a float sum or rsqrt from the rows above |
+| mlp_pre, mlp_f32, dot_batched | XLA CPU's dot (a YNNPACK fusion) accumulates in a shape-dependent tree. `tools/reveal_dot_order.py` shows that for 4x16 @ 16x8 it is the same tree as a float reduce of 16, and a sequential fused multiply-add chain matches 14 of 32 elements. The bias add after the dot is exact (dot then add equals XLA in 32 of 32), and so is the `exp` after it. |
+| softmax_f32, rms_norm_f32 | each contains a float sum or rsqrt from the rows above. `softmax_pinned`, the same softmax with the sum order written out, is bit-equal. |
+
+`exp` and `log` are bit-equal. XLA CPU does not call libm for them: `polynomial_approximations.cc` (revision d867969800d4) rewrites them to a Cephes-style polynomial, and `lean/Ggml/SlangCodegen/ExactExpLog.lean` is that code, with the fused multiply-adds LLVM chose (found by comparing a host model with XLA over all 2^32 inputs: 0 differ) and XLA's flush of subnormals done with the exponent bits. `tests/exact_exp_log` holds the host model and the sweep. It changes the `exp_f32` and `log_f32` kernels, which ggml's EXP and LOG use, to XLA's polynomial: within 2^-22.5 relative of the true value, a few ulp from libm's. The `exp` inside softmax, SiLU and flash attention is unchanged. `exp_stress` and `log_stress` run 4096 inputs each (random bit patterns, both clamp edges, the subnormal boundary, zeros, subnormals, infinities and a NaN) and are bit-equal on the GPU; with the old shaders they differ in 2045 and 1465 of 4096.
+
+`divide` by a broadcast is lowered as XLA does: its simplifier rewrites `a / broadcast(b)` as `a * broadcast(1 / b)`, which rounds twice. For a divisor of 3 the two forms differ in the last place, and with the rewrite `divide_by_const3`, `divide_by_row` and `softmax_pinned` are bit-equal.
 
 Integer-valued sums, `maximum` reductions (single and multi-dimension), bf16 sums and sums over a non-last or non-adjacent dimension are bit-equal.
 
