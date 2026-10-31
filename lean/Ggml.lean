@@ -1,5 +1,6 @@
 import LeanSlang
 import Ggml.SlangCodegen.Common
+import Ggml.SlangCodegen.ExactDivSqrt
 import Ggml.SlangCodegen.Binary
 import Ggml.SlangCodegen.Unary
 import Ggml.SlangCodegen.Rope
