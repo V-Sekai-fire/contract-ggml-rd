@@ -38,3 +38,12 @@ and Sourcegraph answered. Nothing publishes AMD's table or rule. What exists:
 - AMD's is a 4096-entry table (12-bit index), not Intel's 1024. The same rule at 12 bits leaves about 1,100 of 4,096 wrong
   (see above), and amd_from_intel.py (Intel-style midpoint nodes interpolated four ways) leaves 2,118 of 8,192 wrong.
 - Stack Overflow 13102167 confirms the two vendors return different rcpps and rsqrtps values.
+
+Built from it (the Bochs style): guest/ggml-rd/rsqrt_zen2.h and ops/rsqrt_zen2.cpp hold the table-driven CPU reference and register
+the op; ExactRsqrt.lean is the GPU kernel. Checks, all with clang -O2 -mavx2 -mfma -ffp-contract=off:
+
+    python gen_zen2_table.py        # writes guest/ggml-rd/rsqrt_zen2_table.h from the instruction (needs xla_rsqrt.dll)
+    zen2_sweep.exe                  # zen2_rsqrt.c (table) against RSQRTSS for all 2^32 inputs: 0 differ, NaN payloads included
+    zen2_kernel_check.exe           # the kernel's arithmetic (zen2_words.h, exact baseline + residual, Newton step) against
+                                    # the hardware model of XLA for all 2^32 inputs: 0 differ
+    python zen2_words.py            # derives the 512 residual words (the kernel's table)

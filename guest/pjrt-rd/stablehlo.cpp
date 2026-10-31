@@ -1,4 +1,5 @@
 #include "stablehlo.h"
+#include "../ggml-rd/rsqrt_zen2.h"
 
 #include <cctype>
 #include <cmath>
@@ -286,7 +287,8 @@ bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 		ggml_tensor *nan_or_one = ggml_add(L.ctx, ones.t, ggml_div(L.ctx, zeros.t, ggml_sub(L.ctx, ones.t, ind)));
 		o.t = ggml_mul(L.ctx, ggml_mul(L.ctx, c, ss), nan_or_one);
 	} else if (op == "rsqrt") {
-		o.t = ggml_div(L.ctx, filled(L, f.shape, 1.0f).t, ggml_sqrt(L.ctx, f.t));
+		// XLA CPU's rsqrt is the CPU's estimate instruction and one Newton step; this is that on a Zen 2 (rsqrt_zen2.h).
+		o.t = ggml_rd_rsqrt_zen2_op(L.ctx, contiguous(L, f.t));
 	} else {
 		return L.unsupported("stablehlo." + op);
 	}
