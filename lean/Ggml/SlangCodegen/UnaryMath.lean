@@ -2,6 +2,7 @@ import LeanSlang
 import Ggml.SlangCodegen.Common
 import Ggml.SlangCodegen.Unary
 import Ggml.SlangCodegen.ExactExpLog
+import Ggml.SlangCodegen.ExactRsqrt
 
 /-!
 # `Ggml.SlangCodegen.UnaryMath` — family K1: the f32 math unaries
@@ -44,6 +45,7 @@ open LeanSlang
 open Ggml.SlangCodegen.Common
 open Ggml.SlangCodegen.Unary
 open Ggml.SlangCodegen.ExactExpLog
+open Ggml.SlangCodegen.ExactRsqrt
 
 private def floatParam (n : String) : SlangBinding :=
   ⟨n, .scalar .float, Semantic.none, none, none, .qIn⟩
@@ -77,6 +79,7 @@ def tanhF32 : SlangShaderModule := shader [fnTanhClamped] (.call "tanh_clamped" 
 def floorF32 : SlangShaderModule := shader [] (.call "floor" [v "x"])
 def sqrF32 : SlangShaderModule := shader [] (mul (v "x") (v "x"))
 def logF32 : SlangShaderModule := shader [fnLogXla] (.call "log_xla" [v "x"])
+def rsqrtZen2F32 : SlangShaderModule := shader rsqrtZen2Helpers (.call "rsqrt_zen2" [v "x"])
 def sinF32 : SlangShaderModule := shader [] (.call "sin" [v "x"])
 def cosF32 : SlangShaderModule := shader [] (.call "cos" [v "x"])
 
@@ -91,7 +94,8 @@ def kernels : List (String × SlangShaderModule) :=
   , ("sqr_f32", sqrF32)
   , ("log_f32", logF32)
   , ("sin_f32", sinF32)
-  , ("cos_f32", cosF32) ]
+  , ("cos_f32", cosF32)
+  , ("rsqrt_zen2_f32", rsqrtZen2F32) ]
 
 /-! ## Pins: each kernel is `Unary.sibling` with its helpers and its result. -/
 
@@ -169,6 +173,10 @@ example : LeanSlang.emit logF32 = sibling "float log_xla(float x) {
   return (r1 + q2e);
 }
 \n" "dst[d] = log_xla(x);" := by native_decide
+
+/-- The rsqrt_zen2 kernel is too long to pin as text (a 512-leaf `if` tree): pin its shape instead. -/
+example : ((LeanSlang.emit rsqrtZen2F32).splitOn "if ((w < ").length = 512
+    ∧ ((LeanSlang.emit rsqrtZen2F32).splitOn "dst[d] = rsqrt_zen2(x);").length = 2 := by native_decide
 
 example : LeanSlang.emit floorF32 = sibling "" "dst[d] = floor(x);" := by native_decide
 example : LeanSlang.emit sqrF32 = sibling "" "dst[d] = (x * x);" := by native_decide

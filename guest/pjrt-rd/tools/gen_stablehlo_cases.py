@@ -16,11 +16,10 @@ BF16 = ml_dtypes.bfloat16
 # them to the functional bar and fails if one turns bit-equal, so the list can only shrink.
 XFAIL = {
     "dot_batched": "XLA CPU's dot accumulates in a shape-dependent tree (tools/reveal_dot_order.py), which ggml-rd's mul_mat does not reproduce for this shape",
-    "rsqrt_f32": "XLA CPU's rsqrt (xla/codegen/intrinsic/rsqrt.cc) is the CPU's hardware estimate (rsqrtps) plus Newton steps, and its source says it is not portable across CPUs. On this AMD Ryzen 7 3800X the estimate is a 2 x 4096-entry table keyed by the top 12 mantissa bits and one fused Newton step follow; a host model equals XLA for all 2^32 inputs (tests/xla_rsqrt). Intel gives a different table and two steps. ggml-rd has no estimate instruction and no table kernel",
     "reduce_sum_random": "XLA CPU's float summation order is an irregular tree that changes with the shape, the signature of LLVM reassociating an unrolled chain of adds: tools/reveal_sum_order.py gives (((5+(3+4))+(2+(0+1)))+((10+(9+(8+(6+7))))+((14+15)+(13+(11+12))))) for 8 rows of 16 and a different tree for 32, 48 and 64 elements, so no closed-form order reproduces it and only a per-shape table could; ggml-rd sums 256 interleaved lanes",
     "mean_last": "a float sum whose XLA CPU order is not reproduced (see reduce_sum_random), then a divide",
     "softmax_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random); softmax_pinned, the same softmax with the sum order written out, is bit-equal",
-    "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random) and rsqrt (see rsqrt_f32); pinned_rms_scale shows the sum and sqrt part is bit-equal when the order is written out",
+    "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random); pinned_rms_scale shows the sum and sqrt part is bit-equal when the order is written out",
     "mlp_pre": "XLA CPU's dot (a YNNPACK fusion) accumulates in a shape-dependent tree: for 4x16 @ 16x8 it is the same tree as a float reduce of 16, and a sequential fused multiply-add chain matches 14 of 32 elements; the bias add after it is exact (dot then add equals XLA in 32 of 32)",
     "mlp_f32": "its dot is not bit-equal (see mlp_pre); the exp after it is exact",
 }
@@ -79,6 +78,10 @@ def cases():
                             np.array([0.0, -0.0, 1e-45, -1e-45, 1e-39, np.inf, -np.inf, np.nan, 1.0, 0.70710677, 0.70710683, -1.0], np.float32)]).astype(np.float32)
     log_x = np.concatenate([log_x, np.ones(4096 - len(log_x), np.float32)])
     add("log_stress", lambda a: jnp.log(a), [log_x], ("stablehlo.log", "stablehlo.negate"), "XLA's log polynomial over every input class")
+    rs_x = np.concatenate([bits(1500), srng.uniform(0, 100, 1200), srng.uniform(1e-3, 4.0, 900), np.float32(2.0) ** srng.integers(-126, 127, 300).astype(np.float32),
+                           np.array([0.0, -0.0, 1e-45, -1e-45, 1e-39, 1.1754944e-38, np.inf, -np.inf, np.nan, 1.0, 4.0, -1.0], np.float32)]).astype(np.float32)
+    rs_x = np.concatenate([rs_x, np.ones(4096 - len(rs_x), np.float32)])
+    add("rsqrt_stress", lambda a: jax.lax.rsqrt(a), [rs_x], ("stablehlo.rsqrt", "stablehlo.negate"), "XLA CPU's rsqrt on a Zen 2 over every input class")
     add("sqrt_f32", lambda a: jnp.sqrt(a), [positive(rng, (8, 16))], ("stablehlo.sqrt", "stablehlo.negate"), "elementwise")
 
     add("convert_f32_bf16", lambda a: a.astype(jnp.bfloat16), [x], ("stablehlo.convert", "stablehlo.negate"), "convert")
