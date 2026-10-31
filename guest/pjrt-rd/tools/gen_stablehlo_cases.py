@@ -15,15 +15,14 @@ BF16 = ml_dtypes.bfloat16
 # Cases whose output is not bit-equal to XLA CPU's, each with what was measured. The probe still holds
 # them to the functional bar and fails if one turns bit-equal, so the list can only shrink.
 XFAIL = {
-    "exp_f32": "XLA CPU's exp is an approximation (9 of 128 differ from the correctly rounded value), so equality needs its exact polynomial and fused multiply-add use",
-    "log_f32": "XLA CPU's log is an approximation (18 of 128 differ from the correctly rounded value), so equality needs its exact polynomial and fused multiply-add use",
-    "dot_batched": "XLA CPU sums this batched dot with a separate rounding per multiply and add; its unbatched dot uses fused multiply-add and ggml-rd's mul_mat does too",
-    "rsqrt_f32": "XLA CPU's rsqrt is its own approximation: it differs from one over a square root in f32 in 1244 of 4096 elements and from the correctly rounded value in 737",
+    "dot_batched": "XLA CPU's dot accumulates in a shape-dependent tree (tools/reveal_dot_order.py), which ggml-rd's mul_mat does not reproduce for this shape",
+    "rsqrt_f32": "XLA CPU's rsqrt (xla/codegen/intrinsic/rsqrt.cc) is the CPU's hardware estimate (rsqrtps) plus Newton steps, and its source says it is not portable across CPUs. On this AMD Ryzen 7 3800X the estimate is a 2 x 4096-entry table keyed by the top 12 mantissa bits and one fused Newton step follow; a host model equals XLA for all 2^32 inputs (tests/xla_rsqrt). Intel gives a different table and two steps. ggml-rd has no estimate instruction and no table kernel",
     "reduce_sum_random": "XLA CPU's float summation order is an irregular tree that changes with the shape, the signature of LLVM reassociating an unrolled chain of adds: tools/reveal_sum_order.py gives (((5+(3+4))+(2+(0+1)))+((10+(9+(8+(6+7))))+((14+15)+(13+(11+12))))) for 8 rows of 16 and a different tree for 32, 48 and 64 elements, so no closed-form order reproduces it and only a per-shape table could; ggml-rd sums 256 interleaved lanes",
     "mean_last": "a float sum whose XLA CPU order is not reproduced (see reduce_sum_random), then a divide",
-    "softmax_f32": "contains exp, whose XLA CPU result is not the correctly rounded value, and a float sum whose XLA CPU order is not reproduced (see reduce_sum_random)",
-    "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random) and rsqrt (see rsqrt_f32)",
-    "mlp_f32": "contains exp, whose XLA CPU result is not the correctly rounded value",
+    "softmax_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random); softmax_pinned, the same softmax with the sum order written out, is bit-equal",
+    "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random) and rsqrt (see rsqrt_f32); pinned_rms_scale shows the sum and sqrt part is bit-equal when the order is written out",
+    "mlp_pre": "XLA CPU's dot (a YNNPACK fusion) accumulates in a shape-dependent tree: for 4x16 @ 16x8 it is the same tree as a float reduce of 16, and a sequential fused multiply-add chain matches 14 of 32 elements; the bias add after it is exact (dot then add equals XLA in 32 of 32)",
+    "mlp_f32": "its dot is not bit-equal (see mlp_pre); the exp after it is exact",
 }
 
 
@@ -67,6 +66,19 @@ def cases():
     add("negate_f32", lambda a: -a, [x], ("stablehlo.negate", "stablehlo.abs"), "elementwise")
     add("exp_f32", lambda a: jnp.exp(a), [x], ("stablehlo.exponential", "stablehlo.negate"), "transcendental")
     add("log_f32", lambda a: jnp.log(a), [positive(rng, (8, 16))], ("stablehlo.log", "stablehlo.negate"), "transcendental")
+    # exp and log are XLA's own polynomials (polynomial_approximations.cc); these hold every input class the
+    # model was checked on over all 2^32 patterns: the whole range, both clamp edges, the subnormal
+    # boundary, zeros, subnormals, infinities and a NaN.
+    srng = np.random.default_rng(20261031)
+    bits = lambda n: srng.integers(0, 1 << 32, n, dtype=np.uint64).astype(np.uint32).view(np.float32)
+    exp_x = np.concatenate([bits(1400), srng.uniform(-90, 90, 1400), srng.uniform(-88.0, -86.5, 600), srng.uniform(87.5, 89.5, 600),
+                            np.array([0.0, -0.0, 1e-45, -1e-45, 1e-39, np.inf, -np.inf, np.nan, 88.72283, 88.722839, -87.33654, -103.97], np.float32)]).astype(np.float32)
+    exp_x = np.concatenate([exp_x, np.zeros(4096 - len(exp_x), np.float32)])
+    add("exp_stress", lambda a: jnp.exp(a), [exp_x], ("stablehlo.exponential", "stablehlo.negate"), "XLA's exp polynomial over every input class")
+    log_x = np.concatenate([bits(1800), srng.uniform(0, 200, 1200), srng.uniform(0.5, 2.0, 800), np.float32(2.0) ** srng.integers(-126, 127, 200).astype(np.float32),
+                            np.array([0.0, -0.0, 1e-45, -1e-45, 1e-39, np.inf, -np.inf, np.nan, 1.0, 0.70710677, 0.70710683, -1.0], np.float32)]).astype(np.float32)
+    log_x = np.concatenate([log_x, np.ones(4096 - len(log_x), np.float32)])
+    add("log_stress", lambda a: jnp.log(a), [log_x], ("stablehlo.log", "stablehlo.negate"), "XLA's log polynomial over every input class")
     add("sqrt_f32", lambda a: jnp.sqrt(a), [positive(rng, (8, 16))], ("stablehlo.sqrt", "stablehlo.negate"), "elementwise")
 
     add("convert_f32_bf16", lambda a: a.astype(jnp.bfloat16), [x], ("stablehlo.convert", "stablehlo.negate"), "convert")
@@ -123,6 +135,10 @@ def cases():
     add("reduce_max_multi", lambda a: a.max(axis=(0, 2)), [rand(rng, (3, 3, 3))], ("dimensions = [0, 2]", "dimensions = [0, 1]"), "reduce maximum over two dimensions")
     add("reduce_sum_bf16", lambda a: a.sum(axis=-1), [ints(rng, (8, 8)).astype(BF16)], ("dimensions = [1]", "dimensions = [0]"), "reduce add on bf16 operands")
     add("mean_last", lambda a: a.mean(axis=-1), [rand(rng, (8, 64))], ("stablehlo.divide", "stablehlo.multiply"), "reduce add then divide by the count")
+    add("mlp_pre", lambda p, w, bb: p @ w + bb[None, :], [rand(rng, (4, 16), 0.5), rand(rng, (16, 8), 0.25), rand(rng, (8,), 0.1)], ("stablehlo.dot_general", "stablehlo.subtract"), "dot plus bias, the part of mlp_f32 before exp")
+    add("softmax_pinned", lambda a: (lambda e: e / tree_sum(e)[:, None])(jnp.exp(a - jnp.max(a, axis=-1, keepdims=True))), [rand(rng, (8, 16), 2.0)], ("stablehlo.subtract", "stablehlo.add"), "softmax with the sum order pinned")
+    add("divide_by_const3", lambda a: a / 3.0, [rand(rng, (8, 16), 2.0)], ("stablehlo.divide", "stablehlo.multiply"), "XLA rewrites a / broadcast(3) as a * broadcast(1/3)")
+    add("divide_by_row", lambda a, b: a / b[:, None], [rand(rng, (8, 16), 2.0), positive(rng, (8,))], ("stablehlo.divide", "stablehlo.multiply"), "a / broadcast(b), b a vector")
     add("softmax_f32", lambda a: jax.nn.softmax(a, axis=-1), [rand(rng, (8, 16), 2.0)], ("stablehlo.subtract", "stablehlo.add"), "reduce maximum, exp, reduce add, divide")
     add("rms_norm_f32", lambda a: a * jax.lax.rsqrt((a * a).mean(axis=-1, keepdims=True) + 1e-6), [rand(rng, (8, 16))], ("stablehlo.rsqrt", "stablehlo.sqrt"), "reduce add, divide, rsqrt, broadcast, multiply")
     return out

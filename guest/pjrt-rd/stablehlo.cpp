@@ -21,6 +21,8 @@ struct Val {
 	std::vector<int64_t> shape; // row-major, as StableHLO writes it
 	ggml_type type = GGML_TYPE_F32;
 	bool neg_inf = false; // a constant -inf, or a reshape or broadcast of one
+	ggml_tensor *pre = nullptr; // for a broadcast: the operand before it, shaped like the broadcast with 1s
+	std::vector<int64_t> pre_shape;
 };
 
 struct Ty {
@@ -314,7 +316,15 @@ bool op_binary(Lowering &L, const std::string &op, const Val &a, const Val &b, V
 	} else if (op == "multiply") {
 		o.t = ggml_mul(L.ctx, fa.t, fb.t);
 	} else if (op == "divide") {
-		o.t = ggml_div(L.ctx, fa.t, fb.t);
+		if (fb.pre != nullptr && fb.type == GGML_TYPE_F32 && fb.pre->type == GGML_TYPE_F32) {
+			// XLA's algebraic simplifier rewrites a / broadcast(b) as a * broadcast(1 / b), which rounds twice.
+			// Doing the same keeps the bits: for a divisor of 3 the two results differ in the last place.
+			const Val one = filled(L, fb.pre_shape, 1.0f);
+			ggml_tensor *rcp = ggml_div(L.ctx, one.t, fb.pre);
+			o.t = ggml_mul(L.ctx, fa.t, ggml_repeat(L.ctx, rcp, fa.t));
+		} else {
+			o.t = ggml_div(L.ctx, fa.t, fb.t);
+		}
 	} else {
 		return L.unsupported("stablehlo." + op);
 	}
@@ -573,6 +583,8 @@ bool op_broadcast(Lowering &L, const Val &x, const std::vector<int64_t> &dims, c
 	o.shape = to.shape;
 	o.type = x.type;
 	o.neg_inf = x.neg_inf;
+	o.pre = r.t;
+	o.pre_shape = mid;
 	out = o;
 	return true;
 }

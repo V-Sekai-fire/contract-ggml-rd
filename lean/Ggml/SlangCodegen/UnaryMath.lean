@@ -1,6 +1,7 @@
 import LeanSlang
 import Ggml.SlangCodegen.Common
 import Ggml.SlangCodegen.Unary
+import Ggml.SlangCodegen.ExactExpLog
 
 /-!
 # `Ggml.SlangCodegen.UnaryMath` — family K1: the f32 math unaries
@@ -42,6 +43,7 @@ namespace Ggml.SlangCodegen.UnaryMath
 open LeanSlang
 open Ggml.SlangCodegen.Common
 open Ggml.SlangCodegen.Unary
+open Ggml.SlangCodegen.ExactExpLog
 
 private def floatParam (n : String) : SlangBinding :=
   ⟨n, .scalar .float, Semantic.none, none, none, .qIn⟩
@@ -70,11 +72,11 @@ def fnTanhClamped : SlangFunctionDecl :=
 def absF32 : SlangShaderModule := shader [] (.call "abs" [v "x"])
 def sgnF32 : SlangShaderModule := shader [fnSgn] (.call "sgn" [v "x"])
 def stepF32 : SlangShaderModule := shader [fnStep] (.call "step_ggml" [v "x"])
-def expF32 : SlangShaderModule := shader [] (.call "exp" [v "x"])
+def expF32 : SlangShaderModule := shader [fnExpXla] (.call "exp_xla" [v "x"])
 def tanhF32 : SlangShaderModule := shader [fnTanhClamped] (.call "tanh_clamped" [v "x"])
 def floorF32 : SlangShaderModule := shader [] (.call "floor" [v "x"])
 def sqrF32 : SlangShaderModule := shader [] (mul (v "x") (v "x"))
-def logF32 : SlangShaderModule := shader [] (.call "log" [v "x"])
+def logF32 : SlangShaderModule := shader [fnLogXla] (.call "log_xla" [v "x"])
 def sinF32 : SlangShaderModule := shader [] (.call "sin" [v "x"])
 def cosF32 : SlangShaderModule := shader [] (.call "cos" [v "x"])
 
@@ -94,10 +96,82 @@ def kernels : List (String × SlangShaderModule) :=
 /-! ## Pins: each kernel is `Unary.sibling` with its helpers and its result. -/
 
 example : LeanSlang.emit absF32 = sibling "" "dst[d] = abs(x);" := by native_decide
-example : LeanSlang.emit expF32 = sibling "" "dst[d] = exp(x);" := by native_decide
+example : LeanSlang.emit expF32 = sibling "float exp_xla(float x) {
+  if (isnan(x)) {
+    return x;
+  }
+  uint xb = asuint(x);
+  precise float xi = (((xb & 2139095040u) == 0u) ? asfloat((xb & 2147483648u)) : x);
+  precise float c0 = ((xi < (-87.8f)) ? (-87.8f) : xi);
+  precise float c1 = ((c0 > 88.8f) ? 88.8f : c0);
+  precise float n0 = floor(fma(c1, 1.442695f, 0.5f));
+  precise float n1 = ((n0 < (-127.0f)) ? (-127.0f) : n0);
+  precise float n = ((n1 > 128.0f) ? 128.0f : n1);
+  precise float a0 = fma((-0.69314575f), n, c1);
+  precise float a = fma((-1.4286068e-6f), n, a0);
+  precise float z0 = fma(a, 0.00019875691f, 0.0013981999f);
+  precise float z1 = fma(z0, a, 0.008333452f);
+  precise float z2 = fma(z1, a, 0.041665796f);
+  precise float z3 = fma(z2, a, 0.16666666f);
+  precise float z4 = fma(z3, a, 0.5f);
+  precise float aa = (a * a);
+  precise float z5 = fma(z4, aa, a);
+  precise float z = (1.0f + z5);
+  uint shl = (uint((int(n) + 127)) << 23u);
+  uint p2 = min(shl, 2130706432u);
+  uint remb = (shl - p2);
+  precise float zs = asfloat((asuint(z) + remb));
+  precise float r = (zs * asfloat(p2));
+  return (((asuint(r) & 2139095040u) == 0u) ? asfloat((asuint(r) & 2147483648u)) : r);
+}
+\n" "dst[d] = exp_xla(x);" := by native_decide
+
+example : LeanSlang.emit logF32 = sibling "float log_xla(float x) {
+  if (isnan(x)) {
+    return x;
+  }
+  uint xb = asuint(x);
+  precise float xi = (((xb & 2139095040u) == 0u) ? asfloat((xb & 2147483648u)) : x);
+  if ((xi == 0.0f)) {
+    return asfloat(4286578688u);
+  }
+  if ((xi < 0.0f)) {
+    return asfloat(4294967295u);
+  }
+  if ((asuint(xi) == 2139095040u)) {
+    return xi;
+  }
+  uint bits = asuint(xi);
+  int emm = (int((bits >> 23u)) - 127);
+  precise float m0 = asfloat(((bits & 2155872255u) | 1056964608u));
+  precise float e0 = (1.0f + float(emm));
+  bool low = (m0 < 0.70710677f);
+  precise float t1 = (low ? m0 : 0.0f);
+  precise float m1 = (m0 - 1.0f);
+  precise float e = (e0 - (low ? 1.0f : 0.0f));
+  precise float m = (m1 + t1);
+  precise float x2 = (m * m);
+  precise float x3 = (x2 * m);
+  precise float y0 = fma(m, 0.070376836f, (-0.1151461f));
+  precise float y1 = fma(m, (-0.12420141f), 0.14249323f);
+  precise float y2 = fma(m, 0.20000714f, (-0.24999994f));
+  precise float y3 = fma(y0, m, 0.116769984f);
+  precise float y4 = fma(y1, m, (-0.16668057f));
+  precise float y5 = fma(y2, m, 0.3333333f);
+  precise float y6 = fma(y3, x3, y4);
+  precise float y7 = fma(y6, x3, y5);
+  precise float q1e = ((-0.00021219444f) * e);
+  precise float y8 = fma(y7, x3, q1e);
+  precise float hx2 = (0.5f * x2);
+  precise float r0 = (m - hx2);
+  precise float r1 = (r0 + y8);
+  precise float q2e = (0.6933594f * e);
+  return (r1 + q2e);
+}
+\n" "dst[d] = log_xla(x);" := by native_decide
+
 example : LeanSlang.emit floorF32 = sibling "" "dst[d] = floor(x);" := by native_decide
 example : LeanSlang.emit sqrF32 = sibling "" "dst[d] = (x * x);" := by native_decide
-example : LeanSlang.emit logF32 = sibling "" "dst[d] = log(x);" := by native_decide
 example : LeanSlang.emit sinF32 = sibling "" "dst[d] = sin(x);" := by native_decide
 example : LeanSlang.emit cosF32 = sibling "" "dst[d] = cos(x);" := by native_decide
 
