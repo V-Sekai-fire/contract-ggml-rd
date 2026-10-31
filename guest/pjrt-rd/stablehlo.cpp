@@ -261,6 +261,12 @@ bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 		o.t = ggml_log(L.ctx, f.t);
 	} else if (op == "sqrt") {
 		o.t = ggml_sqrt(L.ctx, f.t);
+	} else if (op == "abs") {
+		o.t = ggml_abs(L.ctx, f.t);
+	} else if (op == "floor") {
+		o.t = ggml_floor(L.ctx, f.t);
+	} else if (op == "sign") {
+		o.t = ggml_sgn(L.ctx, f.t);
 	} else if (op == "rsqrt") {
 		o.t = ggml_div(L.ctx, filled(L, f.shape, 1.0f).t, ggml_sqrt(L.ctx, f.t));
 	} else {
@@ -377,6 +383,148 @@ bool op_reduce(Lowering &L, const std::string &attrs, const Val &x, const Val &i
 	rows.push_back(1);
 	o.shape = rows;
 	o = reshaped(L, o, kept);
+	out = as_type(L, o, x.type);
+	return true;
+}
+
+// stablehlo.slice %x [start:limit(:stride), ...]: a strided view, copied out.
+bool op_slice(Lowering &L, const std::string &attrs, const Val &x, const Ty &to, Val &out) {
+	const size_t lb = attrs.find('[');
+	const size_t rb = attrs.find(']', lb);
+	if (lb == std::string::npos || rb == std::string::npos) {
+		return L.fail("stablehlo.slice: no index ranges");
+	}
+	std::vector<int64_t> start, count, stride, span;
+	size_t p = lb + 1;
+	while (p < rb) {
+		while (p < rb && (attrs[p] == ' ' || attrs[p] == ',')) {
+			++p;
+		}
+		if (p >= rb) {
+			break;
+		}
+		char *e = nullptr;
+		const int64_t a = std::strtoll(attrs.c_str() + p, &e, 10);
+		if (*e != ':') {
+			return L.fail("stablehlo.slice: cannot read a start:limit range");
+		}
+		const int64_t b = std::strtoll(e + 1, &e, 10);
+		int64_t st = 1;
+		if (*e == ':') {
+			st = std::strtoll(e + 1, &e, 10);
+		}
+		if (st < 1 || a < 0 || b < a) {
+			return L.fail("stablehlo.slice: a range is empty, negative or has a stride below one");
+		}
+		start.push_back(a);
+		stride.push_back(st);
+		span.push_back(b - a);
+		count.push_back((b - a + st - 1) / st);
+		p = size_t(e - attrs.c_str());
+	}
+	const size_t r = x.shape.size();
+	if (start.size() != r) {
+		return L.fail("stablehlo.slice: " + std::to_string(start.size()) + " ranges for rank " + std::to_string(r));
+	}
+	for (size_t i = 0; i < r; ++i) {
+		if (start[i] + (count[i] - 1) * stride[i] >= x.shape[i] && count[i] > 0) {
+			return L.fail("stablehlo.slice: a range is past the end of its dimension");
+		}
+	}
+	Val c = x;
+	c.t = contiguous(L, x.t);
+	// A ggml view cannot step along its first dimension (nb0 is the element size), so a stride on the
+	// last StableHLO dimension is applied afterwards, on a transposed copy.
+	const bool last_strided = stride[r - 1] > 1;
+	int64_t ne[GGML_MAX_DIMS] = { 1, 1, 1, 1 };
+	size_t nb[GGML_MAX_DIMS] = { c.t->nb[0], c.t->nb[1], c.t->nb[2], c.t->nb[3] };
+	size_t offset = 0;
+	for (size_t i = 0; i < r; ++i) {
+		const size_t k = r - 1 - i; // ggml dimension of StableHLO dimension i
+		const bool defer = last_strided && i == r - 1;
+		ne[k] = defer ? span[i] : count[i];
+		nb[k] = c.t->nb[k] * (defer ? size_t(1) : size_t(stride[i]));
+		offset += size_t(start[i]) * c.t->nb[k];
+	}
+	Val o;
+	o.t = ggml_cont(L.ctx, ggml_view_4d(L.ctx, c.t, ne[0], ne[1], ne[2], ne[3], nb[1], nb[2], nb[3], offset));
+	if (last_strided) {
+		ggml_tensor *t = ggml_cont(L.ctx, ggml_permute(L.ctx, o.t, 1, 0, 2, 3));
+		ggml_tensor *v = ggml_view_4d(L.ctx, t, t->ne[0], count[r - 1], t->ne[2], t->ne[3], t->nb[1] * size_t(stride[r - 1]), t->nb[2], t->nb[3], 0);
+		o.t = ggml_cont(L.ctx, ggml_permute(L.ctx, ggml_cont(L.ctx, v), 1, 0, 2, 3));
+	}
+	o.shape = count;
+	o.type = x.type;
+	out = o;
+	(void)to;
+	return true;
+}
+
+bool op_concatenate(Lowering &L, const std::string &attrs, const std::vector<Val> &in, Val &out) {
+	const size_t d = attrs.find("dim = ");
+	if (d == std::string::npos || in.empty()) {
+		return L.fail("stablehlo.concatenate: no dim");
+	}
+	const int64_t dim = std::strtoll(attrs.c_str() + d + 6, nullptr, 10);
+	const int64_t r = int64_t(in[0].shape.size());
+	if (dim < 0 || dim >= r) {
+		return L.fail("stablehlo.concatenate: dim is out of range");
+	}
+	Val acc = in[0];
+	for (size_t k = 1; k < in.size(); ++k) {
+		if (in[k].type != acc.type || in[k].shape.size() != acc.shape.size()) {
+			return L.fail("stablehlo.concatenate: operands differ in rank or element type");
+		}
+		for (int64_t i = 0; i < r; ++i) {
+			if (i != dim && in[k].shape[size_t(i)] != acc.shape[size_t(i)]) {
+				return L.fail("stablehlo.concatenate: operands differ outside the concatenated dimension");
+			}
+		}
+		Val f0 = as_type(L, acc, GGML_TYPE_F32);
+		Val f1 = as_type(L, in[k], GGML_TYPE_F32);
+		Val o = acc;
+		o.t = as_type(L, Val{ ggml_concat(L.ctx, contiguous(L, f0.t), contiguous(L, f1.t), int(r - 1 - dim)), f0.shape, GGML_TYPE_F32 }, acc.type).t;
+		o.shape[size_t(dim)] += in[k].shape[size_t(dim)];
+		acc = o;
+	}
+	out = acc;
+	return true;
+}
+
+// stablehlo.pad with a zero padding value, non-negative edges and no interior padding.
+bool op_pad(Lowering &L, const std::string &attrs, const Val &x, const Val &pad_value, Val &out) {
+	std::vector<int64_t> low, high, interior;
+	if (!int_list(attrs, "low", 0, low, nullptr) || !int_list(attrs, "high", 0, high, nullptr) || !int_list(attrs, "interior", 0, interior, nullptr)) {
+		return L.fail("stablehlo.pad: low, high and interior are all needed");
+	}
+	const size_t r = x.shape.size();
+	if (low.size() != r || high.size() != r || interior.size() != r) {
+		return L.fail("stablehlo.pad: the padding lists do not match the rank");
+	}
+	for (size_t i = 0; i < r; ++i) {
+		if (interior[i] != 0) {
+			return L.unsupported("stablehlo.pad with interior padding");
+		}
+		if (low[i] < 0 || high[i] < 0) {
+			return L.unsupported("stablehlo.pad with negative edge padding");
+		}
+	}
+	std::unordered_map<const ggml_tensor *, std::vector<uint8_t> >::const_iterator ci = L.consts.find(pad_value.t);
+	if (ci == L.consts.end() || !pad_value.shape.empty() || element_f32(pad_value, ci->second) != 0.0f) {
+		return L.unsupported("stablehlo.pad with a padding value other than a constant zero");
+	}
+	int lp[GGML_MAX_DIMS] = { 0, 0, 0, 0 };
+	int rp[GGML_MAX_DIMS] = { 0, 0, 0, 0 };
+	for (size_t i = 0; i < r; ++i) {
+		lp[r - 1 - i] = int(low[i]);
+		rp[r - 1 - i] = int(high[i]);
+	}
+	Val f = as_type(L, x, GGML_TYPE_F32);
+	Val o = f;
+	o.t = ggml_pad_ext(L.ctx, contiguous(L, f.t), lp[0], rp[0], lp[1], rp[1], lp[2], rp[2], lp[3], rp[3]);
+	for (size_t i = 0; i < r; ++i) {
+		o.shape[i] += low[i] + high[i];
+	}
 	out = as_type(L, o, x.type);
 	return true;
 }
@@ -655,7 +803,7 @@ bool statement(Lowering &L, const std::string &line) {
 	bool ok = false;
 	if (op == "add" || op == "subtract" || op == "multiply" || op == "divide" || op == "maximum") {
 		ok = in.size() == 2 ? op_binary(L, op, in[0], in[1], out) : L.fail("stablehlo." + op + " takes two operands");
-	} else if (op == "negate" || op == "exponential" || op == "log" || op == "sqrt" || op == "rsqrt") {
+	} else if (op == "negate" || op == "exponential" || op == "log" || op == "sqrt" || op == "rsqrt" || op == "abs" || op == "floor" || op == "sign") {
 		ok = in.size() == 1 ? op_unary(L, op, in[0], out) : L.fail("stablehlo." + op + " takes one operand");
 	} else if (op == "convert") {
 		if (in.size() != 1) {
@@ -682,6 +830,12 @@ bool statement(Lowering &L, const std::string &line) {
 			return L.fail("stablehlo.broadcast_in_dim: bad dims");
 		}
 		ok = op_broadcast(L, in[0], dims, to, out);
+	} else if (op == "slice") {
+		ok = in.size() == 1 ? op_slice(L, attrs, in[0], to, out) : L.fail("stablehlo.slice takes one operand");
+	} else if (op == "concatenate") {
+		ok = op_concatenate(L, attrs, in, out);
+	} else if (op == "pad") {
+		ok = in.size() == 2 ? op_pad(L, attrs, in[0], in[1], out) : L.fail("stablehlo.pad takes an operand and a padding value");
 	} else if (op == "reduce") {
 		ok = in.size() == 2 ? op_reduce(L, attrs, in[0], in[1], to, out) : L.fail("stablehlo.reduce takes one operand and an init");
 	} else if (op == "dot_general") {
