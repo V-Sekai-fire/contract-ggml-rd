@@ -488,6 +488,167 @@ bool probe_graph_through_pjrt(const std::string &arg_which) {
 // compute must upload nothing.
 
 
+
+// Runs the graph on ggml-rd with every node kept, and prints each node's nonzero count and mean
+// magnitude in order, so the first node that is all zeros stands out.
+bool probe_bisect(const std::string &arg_which) {
+	bool f32 = false;
+	const std::string which = split_arm(arg_which, &f32);
+	BuildFn build;
+	std::string native, resid;
+	if (!graph_builder(which, 0, build, native, resid)) {
+		std::printf("PROBE pjrt bisect: unknown graph '%s'\n", which.c_str());
+		return false;
+	}
+	ggml_backend_reg_t reg = ggml_backend_rd_reg();
+	Net n;
+	n.be = ggml_backend_dev_init(ggml_backend_reg_dev_get(reg, 0), nullptr);
+	n.rd = true;
+	build(n, f32);
+	const int count = ggml_graph_n_nodes(n.gf);
+	for (int i = 0; i < count; ++i) {
+		ggml_set_output(ggml_graph_node(n.gf, i));
+	}
+	if (!allocate(n)) {
+		return false;
+	}
+	ggml_backend_rd_ensure_idle();
+	if (ggml_backend_graph_compute(n.be, n.gf) != GGML_STATUS_SUCCESS) {
+		std::printf("PROBE pjrt bisect %s: the run failed\n", arg_which.c_str());
+		return false;
+	}
+	int first_zero = -1;
+	for (int i = 0; i < count; ++i) {
+		ggml_tensor *t = ggml_graph_node(n.gf, i);
+		const int64_t ne = ggml_nelements(t);
+		if (!ggml_is_contiguous(t) || (t->type != GGML_TYPE_F32 && t->type != GGML_TYPE_BF16)) {
+			std::printf("BISECT %3d %-12s %-6s ne=[%lld,%lld,%lld,%lld] skipped (%s)\n", i, ggml_op_name(t->op), ggml_type_name(t->type),
+					(long long)t->ne[0], (long long)t->ne[1], (long long)t->ne[2], (long long)t->ne[3],
+					ggml_is_contiguous(t) ? "type" : "not contiguous");
+			continue;
+		}
+		std::vector<uint8_t> raw(ggml_nbytes(t));
+		ggml_backend_tensor_get(t, raw.data(), 0, raw.size());
+		size_t nz = 0, nonfinite = 0;
+		double sum = 0.0;
+		for (int64_t k = 0; k < ne; ++k) {
+			float f = 0.0f;
+			if (t->type == GGML_TYPE_F32) {
+				std::memcpy(&f, raw.data() + size_t(k) * 4, 4);
+			} else {
+				ggml_bf16_t b;
+				std::memcpy(&b, raw.data() + size_t(k) * 2, 2);
+				f = ggml_bf16_to_fp32(b);
+			}
+			nz += f != 0.0f;
+			nonfinite += !std::isfinite(f);
+			sum += std::fabs(double(f));
+		}
+		if (nz == 0 && first_zero < 0) {
+			first_zero = i;
+		}
+		const ggml_tensor *s0 = t->src[0];
+		const ggml_tensor *s1 = t->src[1];
+		std::printf("BISECT %3d %-12s %-6s ne=[%lld,%lld,%lld,%lld] nonzero=%zu/%lld nonfinite=%zu mean_abs=%.4e srcs=%s/%s\n", i,
+				ggml_op_name(t->op), ggml_type_name(t->type), (long long)t->ne[0], (long long)t->ne[1], (long long)t->ne[2],
+				(long long)t->ne[3], nz, (long long)ne, nonfinite, sum / double(ne > 0 ? ne : 1), s0 ? ggml_op_name(s0->op) : "-",
+				s1 ? ggml_op_name(s1->op) : "-");
+	}
+	std::printf("PROBE pjrt bisect %s nodes=%d first_all_zero_node=%d\n", arg_which.c_str(), count, first_zero);
+	ggml_backend_free(n.be);
+	return first_zero < 0;
+}
+
+
+// f32 -> bf16 casts on ggml-rd against the host's own rounding, on a bare leaf and in the
+// shapes the Kimodo text layer uses.
+bool probe_cast(const std::string &variant) {
+	ggml_backend_reg_t reg = ggml_backend_rd_reg();
+	Net n;
+	n.be = ggml_backend_dev_init(ggml_backend_reg_dev_get(reg, 0), nullptr);
+	n.rd = true;
+	n.lctx = new_ctx(8);
+	ggml_tensor *x = leaf(n, "x", GGML_TYPE_F32, { 4096, 16 }, -1.0f, 1.0f);
+	n.gctx = new_ctx(64);
+	n.gf = ggml_new_graph_custom(n.gctx, 64, false);
+	std::vector<ggml_tensor *> nodes;
+	ggml_tensor *b = ggml_cast(n.gctx, x, GGML_TYPE_BF16);
+	nodes.push_back(b);
+	ggml_tensor *last = b;
+	if (variant == "roundtrip" || variant == "roundtrip_all") {
+		last = ggml_cast(n.gctx, b, GGML_TYPE_F32);
+		nodes.push_back(last);
+	}
+	if (variant == "roundtrip_all") {
+		for (ggml_tensor *t : nodes) {
+			ggml_set_output(t);
+		}
+	} else {
+		ggml_set_output(last);
+	}
+	ggml_build_forward_expand(n.gf, last);
+	if (!allocate(n)) {
+		return false;
+	}
+	ggml_backend_rd_ensure_idle();
+	if (ggml_backend_graph_compute(n.be, n.gf) != GGML_STATUS_SUCCESS) {
+		std::printf("PROBE pjrt cast %s: the run failed\n", variant.c_str());
+		return false;
+	}
+	std::vector<float> xs(size_t(ggml_nelements(x)));
+	ggml_backend_tensor_get(x, xs.data(), 0, xs.size() * 4);
+	std::vector<uint8_t> raw(ggml_nbytes(last));
+	ggml_backend_tensor_get(last, raw.data(), 0, raw.size());
+	size_t nz = 0, wrong = 0;
+	for (size_t k = 0; k < xs.size(); ++k) {
+		float got = 0.0f;
+		if (last->type == GGML_TYPE_F32) {
+			std::memcpy(&got, raw.data() + k * 4, 4);
+		} else {
+			ggml_bf16_t g;
+			std::memcpy(&g, raw.data() + k * 2, 2);
+			got = ggml_bf16_to_fp32(g);
+		}
+		const float want = ggml_bf16_to_fp32(ggml_fp32_to_bf16(xs[k]));
+		nz += got != 0.0f;
+		wrong += std::memcmp(&got, &want, 4) != 0;
+	}
+	{
+		size_t ev_ok = 0, od_ok = 0;
+		for (size_t k = 0; k < xs.size(); ++k) {
+			float got = 0.0f;
+			if (last->type == GGML_TYPE_F32) {
+				std::memcpy(&got, raw.data() + k * 4, 4);
+			} else {
+				ggml_bf16_t g;
+				std::memcpy(&g, raw.data() + k * 2, 2);
+				got = ggml_bf16_to_fp32(g);
+			}
+			const float want = ggml_bf16_to_fp32(ggml_fp32_to_bf16(xs[k]));
+			const bool same = std::memcmp(&got, &want, 4) == 0;
+			(k % 2 == 0 ? ev_ok : od_ok) += same ? 1 : 0;
+		}
+		std::printf("PROBE pjrt cast %s: correct even-index elements %zu of %zu, odd-index %zu of %zu\n", variant.c_str(), ev_ok, xs.size() / 2, od_ok, xs.size() / 2);
+		if (nodes.size() > 1) {
+			std::vector<uint8_t> mid(ggml_nbytes(nodes[0]));
+			ggml_backend_tensor_get(nodes[0], mid.data(), 0, mid.size());
+			size_t bad = 0;
+			for (size_t k = 0; k < xs.size(); ++k) {
+				ggml_bf16_t g;
+				std::memcpy(&g, mid.data() + k * 2, 2);
+				const float want = ggml_bf16_to_fp32(ggml_fp32_to_bf16(xs[k]));
+				const float have = ggml_bf16_to_fp32(g);
+				bad += std::memcmp(&have, &want, 4) != 0;
+			}
+			std::printf("PROBE pjrt cast %s: the bf16 intermediate differs from host rounding in %zu elements\n", variant.c_str(), bad);
+		}
+	}
+	std::printf("PROBE pjrt cast %s: type=%s n=%zu nonzero=%zu differs_from_host_rounding=%zu\n", variant.c_str(), ggml_type_name(last->type),
+			xs.size(), nz, wrong);
+	ggml_backend_free(n.be);
+	return wrong == 0 && nz > 0;
+}
+
 bool probe_backend(const std::string &arg_which) {
 	bool f32 = false;
 	const std::string which = split_arm(arg_which, &f32);
@@ -650,6 +811,12 @@ bool pjrt_probe(const std::string &arg) {
 		pjrt_rd::attach(nullptr);
 		ggml_backend_free(be);
 		return ok;
+	}
+	if (arg.compare(0, 5, "cast:") == 0) {
+		return probe_cast(arg.substr(5));
+	}
+	if (arg.compare(0, 7, "bisect:") == 0) {
+		return probe_bisect(arg.substr(7));
 	}
 	if (arg.compare(0, 8, "backend:") == 0) {
 		return probe_backend(arg.substr(8));

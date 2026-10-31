@@ -247,8 +247,8 @@ ggml_status graph_compute(ggml_cgraph *g) {
 			for (int s = 0; s < 3; ++s) {
 				const ggml_tensor *src = node->src[s];
 				const Buffer *sb = src ? buffer_of(src) : nullptr;
-				if (sb == nullptr || dbuf == nullptr) {
-					continue;
+				if (sb == nullptr || dbuf == nullptr || src == node) {
+					continue; // a CPY names itself as src1: copying it would rebase its own destination
 				}
 				bool shared = sb->rid.index == dbuf->rid.index;
 				for (int t = 0; t < s && !shared; ++t) {
