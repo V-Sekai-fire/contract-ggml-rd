@@ -10,6 +10,7 @@
 #include "ggml-backend.h"
 #include "ggml.h"
 #include "program.h"
+#include "stablehlo.h"
 
 namespace {
 
@@ -197,7 +198,7 @@ PJRT_Buffer *new_buffer(PJRT_Client *client, size_t bytes, const ggml_tensor *li
 		return nullptr;
 	}
 	ggml_tensor *t = like != nullptr ? ggml_dup_tensor(ctx, like) : ggml_new_tensor_1d(ctx, GGML_TYPE_I8, int64_t(bytes));
-	ggml_backend_buffer_t buf = ggml_backend_alloc_buffer(g_backend, ggml_nbytes(t));
+	ggml_backend_buffer_t buf = ggml_backend_alloc_buffer(g_backend, ggml_backend_buft_get_alloc_size(ggml_backend_get_default_buffer_type(g_backend), t));
 	if (buf == nullptr) {
 		ggml_free(ctx);
 		err = "device allocation of " + std::to_string(bytes) + " bytes failed";
@@ -575,7 +576,13 @@ PJRT_Error *rd_client_compile(PJRT_Client_Compile_Args *a) {
 	}
 	std::shared_ptr<pjrt_rd::Program> p = std::make_shared<pjrt_rd::Program>();
 	std::string err;
-	if (!pjrt_rd::parse(std::string(prog->code, prog->code_size), *p, err)) {
+	const std::string code(prog->code, prog->code_size);
+	if (pjrt_rd::is_stablehlo(code)) {
+		if (!pjrt_rd::lower_stablehlo(code, *p, err)) {
+			return make_error(err.compare(0, 11, "unsupported") == 0 ? PJRT_Error_Code_UNIMPLEMENTED : PJRT_Error_Code_INVALID_ARGUMENT,
+					"Compile: " + err);
+		}
+	} else if (!pjrt_rd::parse(code, *p, err)) {
 		return make_error(PJRT_Error_Code_INVALID_ARGUMENT, "Compile: " + err);
 	}
 	PJRT_LoadedExecutable *le = new PJRT_LoadedExecutable;
@@ -673,6 +680,21 @@ PJRT_Error *rd_loaded_execute(PJRT_LoadedExecutable_Execute_Args *a) {
 	std::vector<ggml_tensor *> t(n, nullptr);
 	std::string fail;
 	size_t next_arg = 0;
+	std::vector<int> const_at(n, -1);
+	std::vector<size_t> const_off(prog.consts.size(), 0);
+	size_t const_total = 0;
+	for (size_t k = 0; k < prog.consts.size(); ++k) {
+		const_at[size_t(prog.consts[k].id)] = int(k);
+		const_off[k] = const_total;
+		const_total += (prog.consts[k].bytes.size() + 255) & ~size_t(255);
+	}
+	ggml_backend_buffer_t const_buf = nullptr;
+	if (const_total != 0) {
+		const_buf = ggml_backend_alloc_buffer(g_backend, const_total);
+		if (const_buf == nullptr) {
+			fail = "Execute: allocating " + std::to_string(const_total) + " bytes for the module's constants failed";
+		}
+	}
 	for (size_t i = 0; i < n && fail.empty(); ++i) {
 		const pjrt_rd::TensorRec &r = prog.t[i];
 		ggml_tensor *x = ggml_new_tensor_4d(ctx, ggml_type(r.type), r.ne[0], r.ne[1], r.ne[2], r.ne[3]);
@@ -685,11 +707,21 @@ PJRT_Error *rd_loaded_execute(PJRT_LoadedExecutable_Execute_Args *a) {
 			PJRT_Buffer *b = argv[next_arg++];
 			if (b == nullptr || b->deleted) {
 				fail = "Execute: argument " + std::to_string(next_arg - 1) + " is null or deleted";
-			} else if (ggml_nbytes(x) > b->bytes) {
+			} else if (ggml_nbytes(x) > b->bytes || ggml_backend_buft_get_alloc_size(ggml_backend_get_default_buffer_type(g_backend), x) > ggml_backend_buffer_get_size(b->buffer)) {
 				fail = "Execute: argument " + std::to_string(next_arg - 1) + " holds " + std::to_string(b->bytes) + " bytes, '"
 						+ r.name + "' needs " + std::to_string(ggml_nbytes(x));
 			} else if (ggml_backend_tensor_alloc(b->buffer, x, ggml_backend_buffer_get_base(b->buffer)) != GGML_STATUS_SUCCESS) {
 				fail = "Execute: placing argument '" + r.name + "' failed";
+			}
+			continue;
+		}
+		if (const_at[i] >= 0) {
+			const pjrt_rd::Program::Const &c = prog.consts[size_t(const_at[i])];
+			if (ggml_nbytes(x) != c.bytes.size() ||
+					ggml_backend_tensor_alloc(const_buf, x, static_cast<char *>(ggml_backend_buffer_get_base(const_buf)) + const_off[size_t(const_at[i])]) != GGML_STATUS_SUCCESS) {
+				fail = "Execute: placing constant '" + r.name + "' failed";
+			} else {
+				ggml_backend_tensor_set(x, c.bytes.data(), 0, c.bytes.size());
 			}
 			continue;
 		}
@@ -744,6 +776,9 @@ PJRT_Error *rd_loaded_execute(PJRT_LoadedExecutable_Execute_Args *a) {
 	}
 	if (galloc != nullptr) {
 		ggml_gallocr_free(galloc);
+	}
+	if (const_buf != nullptr) {
+		ggml_backend_buffer_free(const_buf);
 	}
 	ggml_free(ctx);
 	if (result == nullptr && a->device_complete_events != nullptr) {
