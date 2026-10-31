@@ -14,12 +14,11 @@ Everything else. The error is `UNIMPLEMENTED` for valid StableHLO outside the li
 
 ## Bit equality with XLA CPU
 
-The probe compares every case with the output XLA's CPU backend gave for the same JAX module. 18 of 24 cases are bit-equal. Six are not, and each carries its measured reason in `tools/gen_stablehlo_cases.py` (`XFAIL`). They must meet the functional bar (relative L2 of 1e-4 for f32, 1e-3 for bf16) and fail the probe if one becomes bit-equal, so the list only shrinks.
+The probe compares every case with the output XLA's CPU backend gave for the same JAX module. 20 of 24 cases are bit-equal on the RTX 3090. Four are not, and each carries its measured reason in `tools/gen_stablehlo_cases.py` (`XFAIL`). They must meet the functional bar (relative L2 of 1e-4 for f32, 1e-3 for bf16) and fail the probe if one becomes bit-equal, so the list only shrinks. `divide` and `sqrt` left it when `DIV` and `SQRT` became correctly rounded (`lean/Ggml/SlangCodegen/ExactDivSqrt.lean`).
 
 | Case | Why it is not bit-equal yet |
 |---|---|
-| divide, sqrt | XLA CPU returns the correctly rounded value. ggml-rd's DIV and SQRT kernels are 1 ulp off in a quarter of the elements, so they need correctly rounded kernels. |
-| exp, log | XLA CPU's results are approximations (9 and 18 of 128 elements differ from the correctly rounded value). Equality needs XLA's exact polynomial and its fused multiply-add use. |
+| exp, log | XLA CPU's results are approximations (9 and 18 of 128 elements differ from the correctly rounded value), and ggml-rd's differ from ggml-cpu's too (2168 and 2153 of 4096). Equality needs XLA's exact polynomial and its fused multiply-add use. |
 | dot_batched | XLA CPU sums this dot with a separate rounding per multiply and add. Its unbatched dot, and ggml-rd's mul_mat, use fused multiply-add. |
 | mlp_f32 | contains exp |
 

@@ -1,5 +1,6 @@
 import LeanSlang
 import Ggml.SlangCodegen.Common
+import Ggml.SlangCodegen.ExactDivSqrt
 
 /-!
 # `Ggml.SlangCodegen.Binary` — ggml ADD, SUB, MUL and DIV, f32, with broadcast
@@ -23,20 +24,22 @@ unused and kept by `-preserve-params`. SUB (`ggml_sub`, the same broadcast
 rule as ADD in ggml-cpu's `ggml_compute_forward_sub_f32`) is what
 MotionBricks' masked blends (`ggml_mul(ggml_sub(a, b), mask)`) run. DIV
 (`ggml_div`, `op_div` in ggml-cpu's binary-ops.cpp, the same broadcast
-rule) is one IEEE divide per element: bit-exact on the cpp target, and
-within a Vulkan implementation's divide precision (2.5 ULP) on the GPU.
+rule) is one IEEE divide per element. The bare GPU `/` is within Vulkan's divide
+precision (2.5 ULP) and measured one ulp off in a quarter of the elements, so the
+kernel calls `div_exact` (`ExactDivSqrt`), which is correctly rounded on both targets.
 -/
 
 namespace Ggml.SlangCodegen.Binary
 
 open LeanSlang
 open Ggml.SlangCodegen.Common
+open Ggml.SlangCodegen.ExactDivSqrt
 
 /-- Threads per work group. -/
 def threadgroup : Nat := 256
 
-/-- The body after the 1-D prologue: unravel, three offsets, one op. -/
-def body (op : String) : List SlangStmt :=
+/-- The body after the 1-D prologue: unravel, three offsets, one expression of the two operands. -/
+def bodyWith (value : SlangExpr → SlangExpr → SlangExpr) : List SlangStmt :=
   let s1 := wSrc 1
   [ .decl (.scalar .uint) "i0"
   , .decl (.scalar .uint) "i1"
@@ -52,7 +55,10 @@ def body (op : String) : List SlangStmt :=
       , urem (v "i2") (pwN (s1 + tNe + 2))
       , urem (v "i3") (pwN (s1 + tNe + 3)) ])
   , .assign (.index (v "dst") (v "d"))
-      (.bin op (.index (v "s0") (v "a")) (.index (v "s1") (v "b"))) ]
+      (value (.index (v "s0") (v "a")) (.index (v "s1") (v "b"))) ]
+
+/-- The body for one operator. -/
+def body (op : String) : List SlangStmt := bodyWith (fun x y => .bin op x y)
 
 /-- The module for one operator (`"+"`, `"-"`, `"*"` or `"/"`). -/
 def shader (op : String) : SlangShaderModule :=
@@ -63,7 +69,11 @@ def shader (op : String) : SlangShaderModule :=
 def addF32 : SlangShaderModule := shader "+"
 def subF32 : SlangShaderModule := shader "-"
 def mulF32 : SlangShaderModule := shader "*"
-def divF32 : SlangShaderModule := shader "/"
+/-- DIV is `div_exact`, the correctly rounded divide, and not the bare `/`. -/
+def divF32 : SlangShaderModule :=
+  kernelModule .float .float .uint .float
+    [fnPw, fnUnravel4, fnOff4, fnDivExact]
+    (entry1D threadgroup (bodyWith (fun x y => .call "div_exact" [x, y])))
 
 /-- The kernels this module contributes, by their kernels.txt names. -/
 def kernels : List (String × SlangShaderModule) :=
@@ -162,8 +172,41 @@ example : LeanSlang.emit subF32 =
   native_decide
 
 /-- And DIV. -/
+def divExactFn : String := "float div_exact(float a, float b) {
+  float aa = abs(a);
+  float bb = abs(b);
+  float qh = (a / b);
+  float aq = abs(qh);
+  if ((!((((aa >= 7.888609e-31f) && (aa <= 1.2676506e30f)) && ((bb >= 7.888609e-31f) && (bb <= 1.2676506e30f))) && ((aq >= 7.888609e-31f) && (aq <= 1.2676506e30f))))) {
+    return qh;
+  }
+  precise float y0 = (1.0f / bb);
+  precise float e = fma((-bb), y0, 1.0f);
+  precise float y1 = fma(y0, e, y0);
+  precise float q0 = (aa * y1);
+  precise float r = fma((-bb), q0, aa);
+  precise float q1 = fma(r, y1, q0);
+  uint bits = asuint(q1);
+  precise float u_up = asfloat(((bits & 2139095040u) - 192937984u));
+  precise float u_dn = (((bits & 8388607u) == 0u) ? (0.5f * u_up) : u_up);
+  precise float r2 = fma((-q1), bb, aa);
+  precise float tu = ((0.5f * u_up) * bb);
+  precise float td = ((0.5f * u_dn) * bb);
+  uint out = bits;
+  if ((r2 >= tu)) {
+    out = (bits + 1u);
+  } else {
+    if ((r2 < (-td))) {
+      out = (bits - 1u);
+    }
+  }
+  return asfloat((out | ((asuint(a) ^ asuint(b)) & 2147483648u)));
+}
+\n"
+
 example : LeanSlang.emit divF32 =
-    (expectedAdd.replace "dst[d] = (s0[a] + s1[b]);" "dst[d] = (s0[a] / s1[b]);") := by
+    (expectedAdd.replace "dst[d] = (s0[a] + s1[b]);" "dst[d] = div_exact(s0[a], s1[b]);").replace
+      "[shader(" (divExactFn ++ "[shader(") := by
   native_decide
 
 end Ggml.SlangCodegen.Binary

@@ -15,8 +15,6 @@ BF16 = ml_dtypes.bfloat16
 # Cases whose output is not bit-equal to XLA CPU's, each with what was measured. The probe still holds
 # them to the functional bar and fails if one turns bit-equal, so the list can only shrink.
 XFAIL = {
-    "divide_f32": "XLA CPU divides exactly as IEEE 754 does (0 of 128 differ from numpy); ggml-rd's DIV is 1 ulp off in about a quarter of the elements",
-    "sqrt_f32": "XLA CPU's sqrt is the correctly rounded value (0 of 128 differ from numpy); ggml-rd's SQRT is 1 ulp off in some elements",
     "exp_f32": "XLA CPU's exp is an approximation (9 of 128 differ from the correctly rounded value), so equality needs its exact polynomial and fused multiply-add use",
     "log_f32": "XLA CPU's log is an approximation (18 of 128 differ from the correctly rounded value), so equality needs its exact polynomial and fused multiply-add use",
     "dot_batched": "XLA CPU sums this batched dot with a separate rounding per multiply and add; its unbatched dot uses fused multiply-add and ggml-rd's mul_mat does too",
