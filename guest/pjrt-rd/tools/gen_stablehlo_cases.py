@@ -18,6 +18,11 @@ XFAIL = {
     "exp_f32": "XLA CPU's exp is an approximation (9 of 128 differ from the correctly rounded value), so equality needs its exact polynomial and fused multiply-add use",
     "log_f32": "XLA CPU's log is an approximation (18 of 128 differ from the correctly rounded value), so equality needs its exact polynomial and fused multiply-add use",
     "dot_batched": "XLA CPU sums this batched dot with a separate rounding per multiply and add; its unbatched dot uses fused multiply-add and ggml-rd's mul_mat does too",
+    "rsqrt_f32": "XLA CPU's rsqrt is its own approximation: it differs from one over a square root in f32 in 1244 of 4096 elements and from the correctly rounded value in 737",
+    "reduce_sum_random": "XLA CPU's float summation order depends on the shape: for one 64x64 input it is 16 interleaved lanes combined by halving, for rows of 16 or 32 it is sequential, and for 4 to 64 rows of 48 to 1024 elements none of nine orders tried (sequential, 4 to 32 lanes combined by halving or in sequence) reproduces it; ggml-rd sums 256 interleaved lanes",
+    "mean_last": "a float sum whose XLA CPU order is not reproduced (see reduce_sum_random), then a divide",
+    "softmax_f32": "contains exp, whose XLA CPU result is not the correctly rounded value, and a float sum whose XLA CPU order is not reproduced (see reduce_sum_random)",
+    "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random) and rsqrt (see rsqrt_f32)",
     "mlp_f32": "contains exp, whose XLA CPU result is not the correctly rounded value",
 }
 
@@ -79,6 +84,19 @@ def cases():
     add("dot_bf16", lambda p, q: p @ q, [rand(rng, (8, 24)).astype(BF16), rand(rng, (24, 12)).astype(BF16)], ("OPERANDS", ""), "dot, bf16 operands")
     add("mlp_f32", lambda p, w, bb: jnp.exp(p @ w + bb[None, :]), [rand(rng, (4, 16), 0.5), rand(rng, (16, 8), 0.25), rand(rng, (8,), 0.1)],
         ("stablehlo.exponential", "stablehlo.negate"), "dot, bias broadcast, exp")
+
+    sq8 = ints(rng, (8, 8))
+    add("reduce_sum_exact", lambda a: a.sum(axis=-1), [sq8], ("dimensions = [1]", "dimensions = [0]"), "reduce add, integer-valued: every partial sum is exact")
+    add("reduce_sum_first", lambda a: a.sum(axis=0), [ints(rng, (8, 8))], ("dimensions = [0]", "dimensions = [1]"), "reduce add over the leading dimension")
+    cube = ints(rng, (3, 3, 3))
+    add("reduce_sum_multi", lambda a: a.sum(axis=(0, 2)), [cube], ("dimensions = [0, 2]", "dimensions = [0, 1]"), "reduce add over two non-adjacent dimensions")
+    add("reduce_sum_random", lambda a: a.sum(axis=-1), [rand(rng, (8, 64))], ("dimensions = [1]", "dimensions = [0]"), "reduce add, random: the summation order is unspecified")
+    add("reduce_max_last", lambda a: a.max(axis=-1), [rand(rng, (8, 8))], ("dimensions = [1]", "dimensions = [0]"), "reduce maximum")
+    add("reduce_max_multi", lambda a: a.max(axis=(0, 2)), [rand(rng, (3, 3, 3))], ("dimensions = [0, 2]", "dimensions = [0, 1]"), "reduce maximum over two dimensions")
+    add("reduce_sum_bf16", lambda a: a.sum(axis=-1), [ints(rng, (8, 8)).astype(BF16)], ("dimensions = [1]", "dimensions = [0]"), "reduce add on bf16 operands")
+    add("mean_last", lambda a: a.mean(axis=-1), [rand(rng, (8, 64))], ("stablehlo.divide", "stablehlo.multiply"), "reduce add then divide by the count")
+    add("softmax_f32", lambda a: jax.nn.softmax(a, axis=-1), [rand(rng, (8, 16), 2.0)], ("stablehlo.subtract", "stablehlo.add"), "reduce maximum, exp, reduce add, divide")
+    add("rms_norm_f32", lambda a: a * jax.lax.rsqrt((a * a).mean(axis=-1, keepdims=True) + 1e-6), [rand(rng, (8, 16))], ("stablehlo.rsqrt", "stablehlo.sqrt"), "reduce add, divide, rsqrt, broadcast, multiply")
     return out
 
 
