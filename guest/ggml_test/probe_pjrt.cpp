@@ -893,7 +893,11 @@ struct Refusal {
 size_t probe_refusals(PJRT_Client *client, size_t *total) {
 	static const Refusal kRefusals[] = {
 		{ "unsupported_op", "%0 = stablehlo.sine %arg0 : tensor<4xf32>\n    return %0 : tensor<4xf32>", PJRT_Error_Code_UNIMPLEMENTED },
-		{ "hex_constant", "%0 = stablehlo.constant dense<0x7F800000> : tensor<f32>\n    %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<4xf32>\n    return %1 : tensor<4xf32>", PJRT_Error_Code_UNIMPLEMENTED },
+		{ "hex_constant", "%0 = stablehlo.constant dense<0x7FC00000> : tensor<f32>\n    %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<4xf32>\n    return %1 : tensor<4xf32>", PJRT_Error_Code_UNIMPLEMENTED },
+		{ "reduce_multiply", "%0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>\n    %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.multiply across dimensions = [0] : (tensor<4xf32>, tensor<f32>) -> tensor<f32>\n    return %1 : tensor<f32>", PJRT_Error_Code_UNIMPLEMENTED },
+		{ "reduce_init_not_identity", "%0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>\n    %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [0] : (tensor<4xf32>, tensor<f32>) -> tensor<f32>\n    return %1 : tensor<f32>", PJRT_Error_Code_UNIMPLEMENTED },
+		{ "reduce_bad_dimension", "%0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>\n    %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [3] : (tensor<4xf32>, tensor<f32>) -> tensor<f32>\n    return %1 : tensor<f32>", PJRT_Error_Code_INVALID_ARGUMENT },
+		{ "maximum_of_values", "%0 = stablehlo.maximum %arg0, %arg0 : tensor<4xf32>\n    return %0 : tensor<4xf32>", PJRT_Error_Code_UNIMPLEMENTED },
 		{ "shape_mismatch", "%0 = stablehlo.add %arg0, %arg0 : tensor<5xf32>\n    return %0 : tensor<5xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
 		{ "wrong_declared_type", "%0 = stablehlo.negate %arg0 : tensor<5xf32>\n    return %0 : tensor<5xf32>", PJRT_Error_Code_INVALID_ARGUMENT },
 		{ "undefined_operand", "%0 = stablehlo.add %arg0, %nope : tensor<4xf32>\n    return %0 : tensor<4xf32>", PJRT_Error_Code_INVALID_ARGUMENT },

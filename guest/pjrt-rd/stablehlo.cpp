@@ -1,6 +1,7 @@
 #include "stablehlo.h"
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -19,6 +20,7 @@ struct Val {
 	ggml_tensor *t = nullptr;
 	std::vector<int64_t> shape; // row-major, as StableHLO writes it
 	ggml_type type = GGML_TYPE_F32;
+	bool neg_inf = false; // a constant -inf, or a reshape or broadcast of one
 };
 
 struct Ty {
@@ -149,6 +151,7 @@ Val reshaped(Lowering &L, const Val &v, const std::vector<int64_t> &shape) {
 	o.t = ggml_reshape_4d(L.ctx, contiguous(L, v.t), ne[0], ne[1], ne[2], ne[3]);
 	o.shape = shape;
 	o.type = v.type;
+	o.neg_inf = v.neg_inf;
 	return o;
 }
 
@@ -233,6 +236,20 @@ bool int_list_pair(const std::string &s, const char *key, std::vector<int64_t> &
 	return int_list(s, "[", after, rhs, nullptr);
 }
 
+// An f32 constant of the given shape with every element v.
+Val filled(Lowering &L, const std::vector<int64_t> &shape, float v) {
+	Val o;
+	o.t = new_tensor(L, GGML_TYPE_F32, shape);
+	o.shape = shape;
+	o.type = GGML_TYPE_F32;
+	std::vector<uint8_t> bytes(size_t(count_of(shape)) * 4);
+	for (size_t i = 0; i < bytes.size() / 4; ++i) {
+		std::memcpy(bytes.data() + i * 4, &v, 4);
+	}
+	L.consts[o.t] = std::move(bytes);
+	return o;
+}
+
 bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 	Val f = as_type(L, a, GGML_TYPE_F32);
 	Val o = f;
@@ -244,6 +261,8 @@ bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 		o.t = ggml_log(L.ctx, f.t);
 	} else if (op == "sqrt") {
 		o.t = ggml_sqrt(L.ctx, f.t);
+	} else if (op == "rsqrt") {
+		o.t = ggml_div(L.ctx, filled(L, f.shape, 1.0f).t, ggml_sqrt(L.ctx, f.t));
 	} else {
 		return L.unsupported("stablehlo." + op);
 	}
@@ -254,6 +273,14 @@ bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 bool op_binary(Lowering &L, const std::string &op, const Val &a, const Val &b, Val &out) {
 	if (a.shape != b.shape) {
 		return L.fail("stablehlo." + op + ": operand shapes differ");
+	}
+	if (op == "maximum") {
+		// Softmax writes max(-inf, row max); a maximum against a constant -inf returns the other operand, NaN included.
+		if (a.neg_inf || b.neg_inf) {
+			out = a.neg_inf ? b : a;
+			return true;
+		}
+		return L.unsupported("stablehlo.maximum of two values (only against a constant -inf)");
 	}
 	Val fa = as_type(L, a, GGML_TYPE_F32);
 	Val fb = as_type(L, b, GGML_TYPE_F32);
@@ -270,6 +297,87 @@ bool op_binary(Lowering &L, const std::string &op, const Val &a, const Val &b, V
 		return L.unsupported("stablehlo." + op);
 	}
 	out = as_type(L, o, a.type);
+	return true;
+}
+
+float element_f32(const Val &c, const std::vector<uint8_t> &bytes) {
+	if (c.type == GGML_TYPE_F32) {
+		float f = 0.0f;
+		std::memcpy(&f, bytes.data(), 4);
+		return f;
+	}
+	ggml_bf16_t b;
+	std::memcpy(&b, bytes.data(), 2);
+	return ggml_bf16_to_fp32(b);
+}
+
+// stablehlo.reduce of add or maximum over some dimensions, with the operation's identity as init.
+bool op_reduce(Lowering &L, const std::string &attrs, const Val &x, const Val &init, const Ty &to, Val &out) {
+	const size_t ap = attrs.find("applies stablehlo.");
+	if (ap == std::string::npos) {
+		return L.unsupported("stablehlo.reduce with a body other than a named stablehlo op");
+	}
+	const size_t ks = ap + 18;
+	const size_t ke = attrs.find(' ', ks);
+	const std::string kind = attrs.substr(ks, ke == std::string::npos ? std::string::npos : ke - ks);
+	if (kind != "add" && kind != "maximum") {
+		return L.unsupported("stablehlo.reduce applying stablehlo." + kind);
+	}
+	std::vector<int64_t> dims;
+	if (!int_list(attrs, "dimensions", 0, dims, nullptr)) {
+		return L.fail("stablehlo.reduce: no dimensions");
+	}
+	const int64_t r = int64_t(x.shape.size());
+	std::vector<bool> reduced(size_t(r), false);
+	for (int64_t d : dims) {
+		if (d < 0 || d >= r || reduced[size_t(d)]) {
+			return L.fail("stablehlo.reduce: dimension " + std::to_string(d) + " is out of range or repeated");
+		}
+		reduced[size_t(d)] = true;
+	}
+	std::unordered_map<const ggml_tensor *, std::vector<uint8_t> >::const_iterator ci = L.consts.find(init.t);
+	if (ci == L.consts.end() || !init.shape.empty()) {
+		return L.unsupported("stablehlo.reduce with an init that is not a scalar constant");
+	}
+	const float iv = element_f32(init, ci->second);
+	const bool identity = kind == "add" ? (iv == 0.0f && !std::signbit(iv)) : (std::isinf(iv) && iv < 0.0f);
+	if (!identity) {
+		return L.unsupported("stablehlo.reduce whose init is not the identity of " + kind);
+	}
+	std::vector<int64_t> kept, perm, flat;
+	int64_t n = 1;
+	for (int64_t i = 0; i < r; ++i) {
+		if (!reduced[size_t(i)]) {
+			kept.push_back(x.shape[size_t(i)]);
+			perm.push_back(i);
+		}
+	}
+	for (int64_t i = 0; i < r; ++i) {
+		if (reduced[size_t(i)]) {
+			perm.push_back(i);
+			n *= x.shape[size_t(i)];
+		}
+	}
+	if (kept != to.shape) {
+		return L.fail("stablehlo.reduce: the result shape does not match the kept dimensions");
+	}
+	Val v = as_type(L, x, GGML_TYPE_F32);
+	v = transposed(L, v, perm);
+	flat = kept;
+	flat.push_back(n);
+	v = reshaped(L, v, flat);
+	Val o;
+	o.type = GGML_TYPE_F32;
+	if (kind == "add") {
+		o.t = ggml_sum_rows(L.ctx, v.t);
+	} else {
+		o.t = ggml_pool_1d(L.ctx, v.t, GGML_OP_POOL_MAX, int(n), int(n), 0);
+	}
+	std::vector<int64_t> rows = kept;
+	rows.push_back(1);
+	o.shape = rows;
+	o = reshaped(L, o, kept);
+	out = as_type(L, o, x.type);
 	return true;
 }
 
@@ -300,6 +408,7 @@ bool op_broadcast(Lowering &L, const Val &x, const std::vector<int64_t> &dims, c
 	o.t = ggml_repeat_4d(L.ctx, r.t, ne[0], ne[1], ne[2], ne[3]);
 	o.shape = to.shape;
 	o.type = x.type;
+	o.neg_inf = x.neg_inf;
 	out = o;
 	return true;
 }
@@ -394,11 +503,28 @@ bool op_constant(Lowering &L, const std::string &line, const Ty &ty, Val &out) {
 		return L.fail("stablehlo.constant without dense<...>");
 	}
 	const std::string body = line.substr(d + 6, e - d - 6);
-	if (body.find('"') != std::string::npos || body.find("0x") != std::string::npos || body.find("inf") != std::string::npos || body.find("nan") != std::string::npos) {
+	std::vector<float> values;
+	bool negative_infinity = false;
+	if (body.compare(0, 2, "0x") == 0) {
+		// StableHLO writes an infinity as its hex bit pattern; any other hex literal is refused.
+		const size_t digits = ty.type == GGML_TYPE_F32 ? 8 : 4;
+		if (body.size() != 2 + digits || !ty.shape.empty()) {
+			return L.unsupported("stablehlo.constant with a hex literal other than a scalar infinity");
+		}
+		const uint32_t bits = uint32_t(std::strtoul(body.c_str() + 2, nullptr, 16));
+		const uint32_t f32_bits = ty.type == GGML_TYPE_F32 ? bits : bits << 16;
+		float f = 0.0f;
+		std::memcpy(&f, &f32_bits, 4);
+		if (!std::isinf(f)) {
+			return L.unsupported("stablehlo.constant with a hex literal other than an infinity");
+		}
+		negative_infinity = f < 0.0f;
+		values.push_back(f);
+	}
+	if (values.empty() && (body.find('"') != std::string::npos || body.find("0x") != std::string::npos || body.find("inf") != std::string::npos || body.find("nan") != std::string::npos)) {
 		return L.unsupported("stablehlo.constant with a hex, string, inf or nan literal");
 	}
-	std::vector<float> values;
-	size_t p = 0;
+	size_t p = values.empty() ? 0 : body.size();
 	while (p < body.size()) {
 		const char c = body[p];
 		if (c == '[' || c == ']' || c == ',' || c == ' ') {
@@ -433,6 +559,7 @@ bool op_constant(Lowering &L, const std::string &line, const Ty &ty, Val &out) {
 		}
 	}
 	L.consts[v.t] = std::move(bytes);
+	v.neg_inf = negative_infinity;
 	out = v;
 	return true;
 }
@@ -469,8 +596,14 @@ bool statement(Lowering &L, const std::string &line) {
 		return L.unsupported("'" + rest.substr(0, rest.find(' ')) + "' (only stablehlo ops)");
 	}
 	const size_t sp = rest.find(' ');
-	const std::string op = rest.substr(10, sp == std::string::npos ? std::string::npos : sp - 10);
+	std::string op = rest.substr(10, sp == std::string::npos ? std::string::npos : sp - 10);
 	std::string tail = sp == std::string::npos ? std::string() : rest.substr(sp + 1);
+	const size_t paren = op.find('(');
+	if (paren != std::string::npos) {
+		// "reduce(%x init: %i) ..." has no space before its operand list.
+		tail = rest.substr(10 + paren);
+		op = op.substr(0, paren);
+	}
 	if (op == "constant") {
 		size_t colon = line.rfind(" : ");
 		Ty ty;
@@ -485,6 +618,15 @@ bool statement(Lowering &L, const std::string &line) {
 		}
 		L.vals[name] = v;
 		return true;
+	}
+	if (op == "reduce" && tail.compare(0, 1, "(") == 0) {
+		// "(%x init: %i) applies ..." reads as the operands "%x, %i".
+		const size_t close = tail.find(')');
+		const size_t init_at = tail.find(" init: ");
+		if (close == std::string::npos || init_at == std::string::npos || init_at > close) {
+			return L.fail("stablehlo.reduce: cannot read its operands");
+		}
+		tail = tail.substr(1, init_at - 1) + ", " + tail.substr(init_at + 7, close - init_at - 7) + tail.substr(close + 1);
 	}
 	size_t after = 0;
 	const std::vector<std::string> ops = operands(tail, after);
@@ -511,9 +653,9 @@ bool statement(Lowering &L, const std::string &line) {
 	}
 	Val out;
 	bool ok = false;
-	if (op == "add" || op == "subtract" || op == "multiply" || op == "divide") {
+	if (op == "add" || op == "subtract" || op == "multiply" || op == "divide" || op == "maximum") {
 		ok = in.size() == 2 ? op_binary(L, op, in[0], in[1], out) : L.fail("stablehlo." + op + " takes two operands");
-	} else if (op == "negate" || op == "exponential" || op == "log" || op == "sqrt") {
+	} else if (op == "negate" || op == "exponential" || op == "log" || op == "sqrt" || op == "rsqrt") {
 		ok = in.size() == 1 ? op_unary(L, op, in[0], out) : L.fail("stablehlo." + op + " takes one operand");
 	} else if (op == "convert") {
 		if (in.size() != 1) {
@@ -540,6 +682,8 @@ bool statement(Lowering &L, const std::string &line) {
 			return L.fail("stablehlo.broadcast_in_dim: bad dims");
 		}
 		ok = op_broadcast(L, in[0], dims, to, out);
+	} else if (op == "reduce") {
+		ok = in.size() == 2 ? op_reduce(L, attrs, in[0], in[1], to, out) : L.fail("stablehlo.reduce takes one operand and an init");
 	} else if (op == "dot_general") {
 		ok = in.size() == 2 ? op_dot(L, attrs, in[0], in[1], to, out) : L.fail("stablehlo.dot_general takes two operands");
 	} else {
