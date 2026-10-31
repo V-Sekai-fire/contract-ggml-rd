@@ -270,13 +270,19 @@ bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 		// zero it was given. Rebuild the sign with exact arithmetic that does not depend on it:
 		//   s = sgn(x), ss = s*s (1 for a nonzero, +0 for a zero), c = s + sgn(1/x) * (1 - ss), result = c * ss.
 		// c is +-1 with the sign of x everywhere (1/+-0 is +-inf), so c * (+0) at a zero is a zero with x's sign.
-		// A NaN gives 0, not NaN.
+		// A NaN gives NaN (see below).
 		const Val ones = filled(L, f.shape, 1.0f);
 		ggml_tensor *sg = ggml_sgn(L.ctx, f.t);
 		ggml_tensor *ss = ggml_mul(L.ctx, sg, sg);
 		ggml_tensor *q = ggml_sgn(L.ctx, ggml_div(L.ctx, ones.t, f.t));
 		ggml_tensor *c = ggml_add(L.ctx, sg, ggml_mul(L.ctx, q, ggml_sub(L.ctx, ones.t, ss)));
-		o.t = ggml_mul(L.ctx, c, ss);
+		// A NaN is the one input where ss = 0 and sgn(1/x) = 0 (a zero has sgn(1/x) = +-1, an infinity has ss = 1).
+		// ind = (1 - ss) * (1 - e*e) is 1 only there, and 1 + 0/(1 - ind) is NaN there (0/0) and 1 elsewhere.
+		const Val zeros = filled(L, f.shape, 0.0f);
+		ggml_tensor *e2 = ggml_mul(L.ctx, q, q);
+		ggml_tensor *ind = ggml_mul(L.ctx, ggml_sub(L.ctx, ones.t, ss), ggml_sub(L.ctx, ones.t, e2));
+		ggml_tensor *nan_or_one = ggml_add(L.ctx, ones.t, ggml_div(L.ctx, zeros.t, ggml_sub(L.ctx, ones.t, ind)));
+		o.t = ggml_mul(L.ctx, ggml_mul(L.ctx, c, ss), nan_or_one);
 	} else if (op == "rsqrt") {
 		o.t = ggml_div(L.ctx, filled(L, f.shape, 1.0f).t, ggml_sqrt(L.ctx, f.t));
 	} else {
