@@ -30,6 +30,7 @@ bool rows_perf(ggml_backend_t be, const std::string &arg);
 bool conv_perf(ggml_backend_t be, const std::string &which);
 // probe_graph.cpp (G3.graph, G3.cost): the apps' graphs, RD vs the in-guest CPU.
 bool graph_probe(const std::string &arg);
+bool pjrt_probe(const std::string &arg);
 bool cost_probe(const std::string &arg);
 
 namespace {
@@ -771,6 +772,8 @@ void job(void *) {
 		result(graph_probe(g_args.arg), ("graph " + g_args.arg).c_str());
 	} else if (name == "cost") {
 		result(cost_probe(g_args.arg), ("cost " + g_args.arg).c_str());
+	} else if (name == "pjrt") {
+		result(pjrt_probe(g_args.arg), ("pjrt " + g_args.arg).c_str());
 	}
 	std::printf("ggml_test: rd stats %s\n", ggml_backend_rd_stats().c_str());
 	std::fflush(stdout);
@@ -785,8 +788,8 @@ void set_device(rdc::Device *dev) {
 bool start(const std::string &name, const std::string &arg, std::string &err) {
 	if (name != "chain" && name != "independent" && name != "files" && name != "alias" && name != "perf"
 			&& name != "rows_perf" && name != "mm_perf" && name != "conv_perf"
-			&& name != "fa_perf" && name != "graph" && name != "cost" && !census::known(name)) {
-		err = "unknown probe '" + name + "' (chain, independent, files, alias, census, perf, rows_perf, mm_perf, conv_perf, fa_perf, graph, cost)";
+			&& name != "fa_perf" && name != "graph" && name != "cost" && name != "pjrt" && !census::known(name)) {
+		err = "unknown probe '" + name + "' (chain, independent, files, alias, census, perf, rows_perf, mm_perf, conv_perf, fa_perf, graph, cost, pjrt)";
 		return false;
 	}
 	g_args = Args{ name, arg };

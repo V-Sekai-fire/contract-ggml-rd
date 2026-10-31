@@ -1,0 +1,5 @@
+pjrt_c_api.h
+  source:  https://github.com/openxla/xla  xla/pjrt/c/pjrt_c_api.h
+  commit:  261d4d4979f65a89b614a6a5baae1790ce51f048 (2026-10-21)
+  api:     PJRT_API_MAJOR 0, PJRT_API_MINOR 117
+  licence: Apache License 2.0, as in the file's own header; the file is not edited
