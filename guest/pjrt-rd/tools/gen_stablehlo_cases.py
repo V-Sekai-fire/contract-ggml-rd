@@ -16,11 +16,11 @@ BF16 = ml_dtypes.bfloat16
 # them to the functional bar and fails if one turns bit-equal, so the list can only shrink.
 XFAIL = {
     "dot_batched": "XLA CPU's dot accumulates in a shape-dependent tree (tools/reveal_dot_order.py), which ggml-rd's mul_mat does not reproduce for this shape",
-    "rsqrt_f32": "XLA CPU's rsqrt is its own approximation: it differs from one over a square root in f32 in 1244 of 4096 elements and from the correctly rounded value in 737",
+    "rsqrt_f32": "XLA CPU's rsqrt (xla/codegen/intrinsic/rsqrt.cc) is the CPU's hardware estimate (rsqrtps) plus Newton steps, and its source says it is not portable across CPUs. On this AMD Ryzen 7 3800X the estimate is a 2 x 4096-entry table keyed by the top 12 mantissa bits and one fused Newton step follow; a host model equals XLA for all 2^32 inputs (tests/xla_rsqrt). Intel gives a different table and two steps. ggml-rd has no estimate instruction and no table kernel",
     "reduce_sum_random": "XLA CPU's float summation order is an irregular tree that changes with the shape, the signature of LLVM reassociating an unrolled chain of adds: tools/reveal_sum_order.py gives (((5+(3+4))+(2+(0+1)))+((10+(9+(8+(6+7))))+((14+15)+(13+(11+12))))) for 8 rows of 16 and a different tree for 32, 48 and 64 elements, so no closed-form order reproduces it and only a per-shape table could; ggml-rd sums 256 interleaved lanes",
     "mean_last": "a float sum whose XLA CPU order is not reproduced (see reduce_sum_random), then a divide",
     "softmax_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random); softmax_pinned, the same softmax with the sum order written out, is bit-equal",
-    "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random) and rsqrt (see rsqrt_f32)",
+    "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random) and rsqrt (see rsqrt_f32); pinned_rms_scale shows the sum and sqrt part is bit-equal when the order is written out",
     "mlp_pre": "XLA CPU's dot (a YNNPACK fusion) accumulates in a shape-dependent tree: for 4x16 @ 16x8 it is the same tree as a float reduce of 16, and a sequential fused multiply-add chain matches 14 of 32 elements; the bias add after it is exact (dot then add equals XLA in 32 of 32)",
     "mlp_f32": "its dot is not bit-equal (see mlp_pre); the exp after it is exact",
 }
