@@ -871,6 +871,11 @@ Compared compare_to(const unsigned char *want, const std::vector<uint8_t> &got, 
 	for (size_t i = 0; i < c.n; ++i) {
 		const float w = element(want, d, i);
 		const float g = element(got.data(), d, i);
+		// IEEE 754 and StableHLO leave a NaN's payload unspecified (XLA CPU writes 7fc00000, the GPU's 0/0 is 7fffffff),
+		// so two NaNs are the same result. A NaN against a number is a difference.
+		if (std::isnan(w) && std::isnan(g)) {
+			continue;
+		}
 		if (std::memcmp(want + i * esz, got.data() + i * esz, esz) != 0) {
 			++c.differing;
 			c.max_ulp = std::max<int64_t>(c.max_ulp, std::llabs(ordered(w, d) - ordered(g, d)));
@@ -1003,7 +1008,8 @@ bool probe_stablehlo(const std::string &which) {
 			const size_t esz = c.out_dtype == StablehloDtype::F32 ? 4 : 2;
 			size_t shown = 0;
 			for (size_t i = 0; i * esz < c.out_size && i * esz < good.out[0].size() && shown < 4; ++i) {
-				if (std::memcmp(c.out + i * esz, good.out[0].data() + i * esz, esz) != 0) {
+				if (std::memcmp(c.out + i * esz, good.out[0].data() + i * esz, esz) != 0
+						&& !(std::isnan(element(c.out, c.out_dtype, i)) && std::isnan(element(good.out[0].data(), c.out_dtype, i)))) {
 					uint32_t want_bits = 0, got_bits = 0;
 					std::memcpy(&want_bits, c.out + i * esz, esz);
 					std::memcpy(&got_bits, good.out[0].data() + i * esz, esz);
