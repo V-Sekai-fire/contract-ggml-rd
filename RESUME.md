@@ -20,7 +20,8 @@ measured.
 
 ## 2. Working rules (from the user)
 
-- Tools come from pixi. Documented exceptions: Godot, slangc, and Lean via elan.
+- Tools come from pixi. Documented exceptions: Godot, slangc, and Lean via elan. (`AGENTS.md`, `check_no_auto.py` and
+  `check_commit_style.py` live in the weftspun workspace repo, not in this one.)
 - An unmet precondition is a FAIL, not a silent skip (working-agreements rule 3).
 - Configure through the host's own mechanism, not environment variables (`AGENTS.md`).
 - Every gate needs a negative control. A zero-vs-zero match is not evidence; a gate must fail on an all-zero reference.
@@ -36,8 +37,16 @@ measured.
 
 ## 3. What exists on `main`
 
-PRs merged so far: 14, 15, 16, 17, 18, 19, 20, 22, 24, 25, 26, 27, 28 (13 PRs), plus 108 and 109 in
-`transport-meshing-pen`.
+PRs merged on this repo so far: #14 through #28 (all fifteen; #1 to #13 predate this work). In `transport-meshing-pen`
+(the build tree) PRs #108 and #109 merged.
+
+### NOT merged: one line in `transport-meshing-pen`
+
+`transport-meshing-pen` branch `dev/pjrt-rd-stablehlo` (commit `22047c7`, pushed, one line in `CMakeLists.txt`: "Build
+stablehlo.cpp into the pjrt_rd library") is **not on that repo's `main`**. Its PR (#110) failed once (cause inferred as
+timing, never confirmed because the CI log was not readable) and was not merged. Until it lands, a fresh meshing-pen checkout
+builds `pjrt_rd` without `stablehlo.cpp`. Compare: https://github.com/V-Sekai-fire/transport-meshing-pen/compare/main...dev/pjrt-rd-stablehlo
+(suggested body: "Builds stablehlo.cpp into the pjrt_rd library."). Everything measured in this file used that branch's build.
 
 | Piece | Where |
 |---|---|
@@ -190,15 +199,29 @@ take 1 to 4 minutes each.
 - Credentials: none are in this repo. A one-off token existed and is gone; the OpenBao creds dir on the desk exists but the nodes
   were unreachable. Never type secrets with the browser tool.
 
-## 8. Suggested next steps
+## 8. Where the work physically lives (read this before cleaning anything)
 
+- The session's tree is under Hermes's scratch directory `C:/Users/ernest.lee/AppData/Local/hermes/cache/scratch/`, which
+  Hermes prunes after 24 idle hours. Pushed branches are the durable copy. Nothing unpushed matters except: untracked `build*.log`
+  files in `weft/1-transport/meshing-pen` (disposable) and the exploratory host scripts in `scratch/exact/` (about 100 files:
+  the formula-hunt scripts `rsqrt_*.py`, `patch_*.py` edit helpers, `pinned_check*.py`, `sign_*.py`). The ones that mattered were
+  copied into `tests/`; the rest can be re-derived from section 4.
+- Also under scratch: `weft/` (the tree rebuilt from `V-Sekai-fire` clones), `pjrt-rd-env/` and `stablehlo-gen/` (pixi projects),
+  `pen-build/` (the Godot run directory with the logs `sh*.log`, `r9-*` ... `r18-*`), `pwd-lib/` (a clone of
+  `plausible-witness-dag`), `rsqrt-witness/`.
+- The skill `godot-sandbox-build-workflow` (in `~/.hermes/skills`) holds the build recipe and `references/pjrt-rd-plugin.md`.
+- Sessions: the live Hermes session was `20261031_120418_369657`; recover older detail with `session_search` on that id.
+
+## 9. Suggested next steps
+
+0. Open the `transport-meshing-pen` PR above (the user opens and merges it).
 1. Measure XLA's dot trees for large K and decide: rule, table, or stay at the rel-L2 bar (section 5.1).
 2. `iota` / `compare` / `select` mask pieces, then a causal-attention case at the rel-L2 bar.
 3. Translate UCRT `powf` and lower `power` and f32 `iota`, so computed RoPE tables are bit-equal.
 4. Measure `tanh`, `logistic`, `erf`, `expm1`, `log1p`, `tan`, then `reduce-window`, `while`, gather/scatter, sort, conv.
 5. Re-run the five ggml users and Kimodo end to end through the PJRT path as ops land, and keep the XFAIL table shrinking.
 
-## 9. Related facts and references
+## 10. Related facts and references
 
 - Mooncake PR #2733 was the model for the ggml mapping (`jax` -> StableHLO -> ggml graph + `Program`).
 - RFD 2335 was deleted upstream by `be28a1f1`; RFD 2294 says agent knowledge lives in RFDs, not desk memory.
