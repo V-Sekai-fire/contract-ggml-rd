@@ -33,3 +33,12 @@ ucrt_libm.c is that translation; ucrt_libm_sweep.c compares it with the runtime'
 
 lean/Ggml/SlangCodegen/ExactSinCos.lean is the same algorithm as a Slang kernel (double, uint64_t), used for ggml's SIN and COS.
 Windows only: another platform's libm gives other bits, and a CPU without FMA takes UCRT's other path.
+
+## power
+
+XLA CPU's `power` is the runtime's `powf` too: pow_dump.py writes 600,000 (a, b) pairs and XLA's `jnp.power`, pow_libm.c compares:
+
+    of 600000 inputs differ from XLA: powf 0 | (float)pow(double) 53 | expf(b*logf(a)) 393319
+
+So a bit-equal `power` needs UCRT's powf (FMA path at ucrtbase.dll RVA 0xA9F20, branch at +0x7b6, with log and exp tables); not translated yet.
+A rotary embedding whose frequency table is an input (`rope_neox`) needs only sin, cos and the ops already lowered, and is bit-equal.
