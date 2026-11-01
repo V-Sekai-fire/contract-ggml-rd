@@ -88,6 +88,15 @@ def cases():
     sc_x = np.concatenate([sc_x, srng.uniform(-100, 100, 4096 - len(sc_x))]).astype(np.float32)[:4096]
     add("sin_stress", lambda a: jnp.sin(a), [sc_x], ("stablehlo.sine", "stablehlo.negate"), "XLA CPU's sin (the C runtime's sinf) over every range and edge input")
     add("cos_stress", lambda a: jnp.cos(a), [sc_x], ("stablehlo.cosine", "stablehlo.negate"), "XLA CPU's cos (the C runtime's cosf) over every range and edge input")
+    def rope_neox(x, pos, inv):
+        h = x.shape[-1] // 2
+        ang = pos[:, None] * inv[None, :]
+        c, sn = jnp.cos(ang)[:, None, :], jnp.sin(ang)[:, None, :]
+        x1, x2 = x[..., :h], x[..., h:]
+        return jnp.concatenate([x1 * c - x2 * sn, x2 * c + x1 * sn], axis=-1)
+    rope_inv = (1.0 / (10000.0 ** (np.arange(0, 8, dtype=np.float64) * 2.0 / 16.0))).astype(np.float32)
+    add("rope_neox", rope_neox, [rand(rng, (8, 4, 16), 1.0), np.arange(8, dtype=np.float32) * 3.0 + 0.5, rope_inv],
+        ("stablehlo.cosine", "stablehlo.negate"), "rotary embedding, rotate-halves layout, frequency table as an input")
     add("rsqrt_stress", lambda a: jax.lax.rsqrt(a), [rs_x], ("stablehlo.rsqrt", "stablehlo.negate"), "XLA CPU's rsqrt on a Zen 2 over every input class")
     add("sqrt_f32", lambda a: jnp.sqrt(a), [positive(rng, (8, 16))], ("stablehlo.sqrt", "stablehlo.negate"), "elementwise")
 
