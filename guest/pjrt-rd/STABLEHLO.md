@@ -51,3 +51,15 @@ pixi run --manifest-path <stablehlo-gen>/pixi.toml python tools/gen_stablehlo_ca
 ```
 
 The environment is Python 3.12 with JAX from PyPI (conda-forge has no `jaxlib` for Windows). The header of the generated file names the JAX version.
+
+## XLA CPU's dot order, measured (tools/dot_trees.py, jax 0.12.0.1)
+
+The summation tree of `a @ w` over the contracted dimension K, found with FPRev for M x K @ K x N:
+
+- With N > 1 the tree depends on K alone: K=16 gives the same tree for M,N = 1x8, 4x8, 8x8, 16x16 and 3x5. With N = 1 it is another tree,
+  a lane-wise one that pairs element i with i+8 (K=16: ((0+8)+(1+9))+... ), the matrix-vector path.
+- For N > 1 the trees are chains inside blocks, joined unevenly. K=2..4: a left-to-right chain, (3+(2+(0+1))). K=5: ((3+4)+(2+(0+1))).
+  K=9: (2+(0+1)) + ((8+(6+7)) + (5+(3+4))), three chains of three. K=12: a chain of six over 6..11 added to the chains over 0..5.
+  K=16: blocks 0..5, 6..10 and 11..15. K=24 and K=32 are bigger and uneven. No closed rule is found yet.
+
+So a bit-equal dot needs XLA's tree per K (a table, or a rule recovered from larger K), expressed as gathers and adds. ggml's mul_mat accumulates in its own order.
