@@ -81,6 +81,13 @@ def cases():
     rs_x = np.concatenate([bits(1500), srng.uniform(0, 100, 1200), srng.uniform(1e-3, 4.0, 900), np.float32(2.0) ** srng.integers(-126, 127, 300).astype(np.float32),
                            np.array([0.0, -0.0, 1e-45, -1e-45, 1e-39, 1.1754944e-38, np.inf, -np.inf, np.nan, 1.0, 4.0, -1.0], np.float32)]).astype(np.float32)
     rs_x = np.concatenate([rs_x, np.ones(4096 - len(rs_x), np.float32)])
+    sc_x = np.concatenate([srng.uniform(-10, 10, 800), srng.uniform(-1000, 1000, 400), srng.uniform(-1, 1, 400), bits(1200),
+                           srng.uniform(1.0e7, 1.0e10, 500), srng.uniform(-1.0e10, -1.0e7, 200),
+                           np.array([0.0, -0.0, 1e-45, 1e-5, 3.14159274, 1.57079637, -1.57079637, 6.28318548, 0.78539819, 0.785398185,
+                                     16777302.0, 16777216.0, 1e6, 3370000000.0, 3.3e9, 3.4e9, 1e30, 3.4028235e38, np.inf, -np.inf, np.nan, 1e-30], np.float32)]).astype(np.float32)
+    sc_x = np.concatenate([sc_x, srng.uniform(-100, 100, 4096 - len(sc_x))]).astype(np.float32)[:4096]
+    add("sin_stress", lambda a: jnp.sin(a), [sc_x], ("stablehlo.sine", "stablehlo.negate"), "XLA CPU's sin (the C runtime's sinf) over every range and edge input")
+    add("cos_stress", lambda a: jnp.cos(a), [sc_x], ("stablehlo.cosine", "stablehlo.negate"), "XLA CPU's cos (the C runtime's cosf) over every range and edge input")
     add("rsqrt_stress", lambda a: jax.lax.rsqrt(a), [rs_x], ("stablehlo.rsqrt", "stablehlo.negate"), "XLA CPU's rsqrt on a Zen 2 over every input class")
     add("sqrt_f32", lambda a: jnp.sqrt(a), [positive(rng, (8, 16))], ("stablehlo.sqrt", "stablehlo.negate"), "elementwise")
 

@@ -3,6 +3,7 @@ import Ggml.SlangCodegen.Common
 import Ggml.SlangCodegen.ExactDivSqrt
 import Ggml.SlangCodegen.ExactExpLog
 import Ggml.SlangCodegen.ExactRsqrt
+import Ggml.SlangCodegen.ExactSinCos
 import Ggml.SlangCodegen.Binary
 import Ggml.SlangCodegen.Unary
 import Ggml.SlangCodegen.Rope

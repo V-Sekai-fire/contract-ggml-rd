@@ -258,6 +258,10 @@ bool op_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 	Val o = f;
 	if (op == "negate") {
 		o.t = ggml_neg(L.ctx, f.t);
+	} else if (op == "sine") {
+		o.t = ggml_sin(L.ctx, f.t);
+	} else if (op == "cosine") {
+		o.t = ggml_cos(L.ctx, f.t);
 	} else if (op == "exponential") {
 		o.t = ggml_exp(L.ctx, f.t);
 	} else if (op == "log") {
@@ -833,7 +837,7 @@ bool statement(Lowering &L, const std::string &line) {
 	bool ok = false;
 	if (op == "add" || op == "subtract" || op == "multiply" || op == "divide" || op == "maximum") {
 		ok = in.size() == 2 ? op_binary(L, op, in[0], in[1], out) : L.fail("stablehlo." + op + " takes two operands");
-	} else if (op == "negate" || op == "exponential" || op == "log" || op == "sqrt" || op == "rsqrt" || op == "abs" || op == "floor" || op == "sign") {
+	} else if (op == "negate" || op == "exponential" || op == "sine" || op == "cosine" || op == "log" || op == "sqrt" || op == "rsqrt" || op == "abs" || op == "floor" || op == "sign") {
 		ok = in.size() == 1 ? op_unary(L, op, in[0], out) : L.fail("stablehlo." + op + " takes one operand");
 	} else if (op == "convert") {
 		if (in.size() != 1) {

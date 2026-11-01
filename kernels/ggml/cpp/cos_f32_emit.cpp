@@ -4156,7 +4156,7 @@ typedef void (*ComputeFunc)(
 
 
 // Atomic helpers for the CPU target. Needed so kIROp_AtomicAdd and
-// friends can lower to native atomic operations on the host — matching
+// friends can lower to native atomic operations on the host - matching
 // the semantics of HLSL `InterlockedAdd`, SPIR-V `OpAtomicIAdd`, etc.
 // Uses compiler builtins so no <atomic> header is required.
 //
@@ -4304,7 +4304,7 @@ struct GlobalParams_0
 };
 
 
-#line 9244 "hlsl.meta.slang"
+#line 8042 "hlsl.meta.slang"
 struct KernelContext_0
 {
     GlobalParams_0* globalParams_0;
@@ -4385,38 +4385,763 @@ static uint32_t off4_0(uint32_t w_1, uint32_t i0_1, uint32_t i1_1, uint32_t i2_1
     return _S14 + i3_1 * _S15;
 }
 
-
-void _main_0(void* _S16, void* entryPointParams_0, void* globalParams_1)
+static uint64_t ucrt_d2b_0(double x_0)
 {
 
 #line 42
-    ComputeThreadVaryingInput * _S17 = (slang_bit_cast<ComputeThreadVaryingInput *>(_S16));
+    uint32_t lo_0;
+    uint32_t hi_0;
+    F64_asuint((x_0), (&lo_0), (&hi_0));
+    return (uint64_t(hi_0) << 32U) | uint64_t(lo_0);
+}
 
-#line 42
-    KernelContext_0 kernelContext_3;
 
-#line 42
-    (&kernelContext_3)->globalParams_0 = (slang_bit_cast<GlobalParams_0*>(globalParams_1));
+#line 74
+static uint64_t ucrt_word_0(uint32_t k_1)
+{
 
-#line 42
-    Vector<uint32_t, 3>  _S18 = _S17->groupID;
-
-#line 42
-    Vector<uint32_t, 3>  _S19 = _S17->groupThreadID;
-    uint32_t _S20 = _S17->groupID.y;
-
-#line 43
-    uint32_t _S21 = pw_0(54U, &kernelContext_3);
-
-#line 43
-    uint32_t e_1 = (_S20 * _S21 + _S18.x) * 256U + _S19.x;
-
-#line 43
-    uint32_t _S22 = pw_0(53U, &kernelContext_3);
-    if(e_1 >= _S22)
+#line 75
+    if(k_1 < 11U)
     {
 
-#line 45
+#line 76
+        if(k_1 < 5U)
+        {
+
+#line 77
+            if(k_1 < 2U)
+            {
+
+#line 78
+                if(k_1 < 1U)
+                {
+
+#line 79
+                    return 8368066394433778144ULL;
+                }
+                else
+                {
+
+#line 81
+                    return 5452082258477612597ULL;
+                }
+
+#line 81
+            }
+            else
+            {
+                if(k_1 < 3U)
+                {
+
+#line 85
+                    return 14262042524961876298ULL;
+                }
+                else
+                {
+
+#line 87
+                    if(k_1 < 4U)
+                    {
+
+#line 88
+                        return 12156856548171165591ULL;
+                    }
+                    else
+                    {
+
+#line 90
+                        return 2800461720837585279ULL;
+                    }
+
+#line 90
+                }
+
+#line 90
+            }
+
+#line 90
+        }
+        else
+        {
+
+
+            if(k_1 < 8U)
+            {
+
+#line 96
+                if(k_1 < 6U)
+                {
+
+#line 97
+                    return 13005750147231817516ULL;
+                }
+                else
+                {
+
+#line 99
+                    if(k_1 < 7U)
+                    {
+
+#line 100
+                        return 6935469467991107625ULL;
+                    }
+                    else
+                    {
+
+#line 102
+                        return 11595783750822098966ULL;
+                    }
+
+#line 102
+                }
+
+#line 102
+            }
+            else
+            {
+
+                if(k_1 < 9U)
+                {
+
+#line 107
+                    return 16704539387327608804ULL;
+                }
+                else
+                {
+
+#line 109
+                    if(k_1 < 10U)
+                    {
+
+#line 110
+                        return 17943720009459436876ULL;
+                    }
+                    else
+                    {
+
+#line 112
+                        return 1302567724733092221ULL;
+                    }
+
+#line 112
+                }
+
+#line 112
+            }
+
+#line 112
+        }
+
+#line 112
+    }
+    else
+    {
+
+
+
+        if(k_1 < 16U)
+        {
+
+#line 119
+            if(k_1 < 13U)
+            {
+
+#line 120
+                if(k_1 < 12U)
+                {
+
+#line 121
+                    return 11311813047935613677ULL;
+                }
+                else
+                {
+
+#line 123
+                    return 5220789585930536102ULL;
+                }
+
+#line 123
+            }
+            else
+            {
+                if(k_1 < 14U)
+                {
+
+#line 127
+                    return 5440375995421435718ULL;
+                }
+                else
+                {
+
+#line 129
+                    if(k_1 < 15U)
+                    {
+
+#line 130
+                        return 1551169640106363191ULL;
+                    }
+                    else
+                    {
+
+#line 132
+                        return 4685988014444215023ULL;
+                    }
+
+#line 132
+                }
+
+#line 132
+            }
+
+#line 132
+        }
+        else
+        {
+
+
+            if(k_1 < 19U)
+            {
+
+#line 138
+                if(k_1 < 17U)
+                {
+
+#line 139
+                    return 8575818556365926670ULL;
+                }
+                else
+                {
+
+#line 141
+                    if(k_1 < 18U)
+                    {
+
+#line 142
+                        return 6100108778995700947ULL;
+                    }
+                    else
+                    {
+
+#line 144
+                        return 716770142402832ULL;
+                    }
+
+#line 144
+                }
+
+#line 144
+            }
+            else
+            {
+
+                if(k_1 < 20U)
+                {
+
+#line 149
+                    return 0ULL;
+                }
+                else
+                {
+
+#line 151
+                    if(k_1 < 21U)
+                    {
+
+#line 152
+                        return 18442240474082181120ULL;
+                    }
+                    else
+                    {
+
+#line 154
+                        return 0ULL;
+                    }
+
+#line 154
+                }
+
+#line 154
+            }
+
+#line 154
+        }
+
+#line 154
+    }
+
+#line 154
+}
+
+
+#line 162
+static uint64_t ucrt_tbl_0(uint32_t o_0)
+{
+
+#line 163
+    uint32_t w_2 = o_0 >> 3U;
+    uint32_t s_0 = (o_0 & 7U) * 8U;
+    if(s_0 == 0U)
+    {
+
+#line 166
+        return ucrt_word_0(w_2);
+    }
+    return ((ucrt_word_0(w_2)) >> s_0) | ((ucrt_word_0(w_2 + 1U)) << (64U - s_0));
+}
+
+
+#line 52
+static uint64_t ucrt_mulhi_0(uint64_t a_0, uint64_t b_0)
+{
+    uint64_t a0_0 = a_0 & 4294967295ULL;
+    uint64_t a1_0 = a_0 >> 32U;
+    uint64_t b0_0 = b_0 & 4294967295ULL;
+    uint64_t b1_0 = b_0 >> 32U;
+
+    uint64_t p01_0 = a0_0 * b1_0;
+    uint64_t p10_0 = a1_0 * b0_0;
+
+
+    return a1_0 * b1_0 + (p01_0 >> 32U) + (p10_0 >> 32U) + ((((a0_0 * b0_0) >> 32U) + (p01_0 & 4294967295ULL) + (p10_0 & 4294967295ULL)) >> 32U);
+}
+
+static int32_t ucrt_hibit_0(uint64_t x_1)
+{
+
+#line 67
+    uint32_t h_0 = uint32_t(x_1 >> 32U);
+    if(h_0 != 0U)
+    {
+
+#line 69
+        return int(32) + int32_t((U32_firstbithigh((h_0))));
+    }
+    return int32_t((U32_firstbithigh((uint32_t(x_1)))));
+}
+
+
+#line 48
+static double ucrt_b2d_0(uint64_t b_1)
+{
+
+#line 49
+    return (U32_asdouble((uint32_t(b_1)), (uint32_t(b_1 >> 32U))));
+}
+
+
+#line 171
+static uint32_t ucrt_ph_0(double ab_0, double * hi_1, double * lo_1)
+{
+
+#line 172
+    uint64_t bits_0 = ucrt_d2b_0(ab_0);
+    int32_t e_1 = int32_t(bits_0 >> 52U) - int(1023);
+
+    uint64_t m_0 = (bits_0 & 4503599627370495ULL) | 4503599627370496ULL;
+    uint32_t _S16 = uint32_t(int(134) - (e_1 >> 3U));
+
+#line 176
+    uint64_t ta_0 = ucrt_tbl_0(_S16);
+    uint64_t tb_0 = ucrt_tbl_0(_S16 + 8U);
+    uint64_t tc_0 = ucrt_tbl_0(_S16 + 16U);
+    uint64_t r8_0 = ta_0 * m_0;
+
+    uint64_t lowB_0 = tb_0 * m_0;
+    uint64_t r9_0 = lowB_0 + ucrt_mulhi_0(ta_0, m_0);
+    uint64_t _S17 = ucrt_mulhi_0(tb_0, m_0);
+
+#line 183
+    uint64_t r10_0;
+
+#line 183
+    if(r9_0 < lowB_0)
+    {
+
+#line 183
+        r10_0 = 1ULL;
+
+#line 183
+    }
+    else
+    {
+
+#line 183
+        r10_0 = 0ULL;
+
+#line 183
+    }
+    uint64_t r10_1 = _S17 + r10_0 + tc_0 * m_0;
+    uint32_t e7_0 = uint32_t(e_1) & 7U;
+    uint32_t cnt_0 = 54U - e7_0;
+    uint64_t rax_0 = r10_1 >> cnt_0;
+    uint64_t cf_0 = (r10_1 >> (cnt_0 - 1U)) & 1ULL;
+
+#line 188
+    uint64_t r9_1;
+
+#line 188
+    uint64_t r8_1;
+
+#line 188
+    uint64_t rdx_0;
+
+    if(cf_0 != 0ULL)
+    {
+        uint64_t _S18 = ~r9_0;
+        uint64_t _S19 = ~r8_0;
+
+#line 193
+        r10_0 = ~r10_1;
+
+#line 193
+        r9_1 = _S18;
+
+#line 193
+        r8_1 = _S19;
+
+#line 193
+        rdx_0 = 9223372036854775808ULL;
+
+#line 190
+    }
+    else
+    {
+
+#line 190
+        r10_0 = r10_1;
+
+#line 190
+        r9_1 = r9_0;
+
+#line 190
+        r8_1 = r8_0;
+
+#line 190
+        rdx_0 = 0ULL;
+
+#line 190
+    }
+
+#line 197
+    uint32_t n3_0 = uint32_t(rax_0 + cf_0) & 3U;
+    uint32_t c2_0 = e7_0 + 10U;
+    uint64_t r10_2 = (r10_0 << c2_0) >> c2_0;
+    int32_t r11_0 = int32_t(c2_0) - int(64);
+
+#line 200
+    int32_t r11_1;
+    if(r10_2 == 0ULL)
+    {
+
+
+        int32_t _S20 = r11_0 - int(64);
+
+#line 205
+        r10_0 = r9_1;
+
+#line 205
+        r11_1 = _S20;
+
+#line 205
+        r9_1 = r8_1;
+
+#line 205
+        r8_1 = 0ULL;
+
+#line 201
+    }
+    else
+    {
+
+#line 201
+        r10_0 = r10_2;
+
+#line 201
+        r11_1 = r11_0;
+
+#line 201
+    }
+
+#line 207
+    int32_t hb_0 = ucrt_hibit_0(r10_0);
+    int32_t r11_2 = r11_1 + hb_0;
+    int32_t sh_0 = hb_0 - int(52);
+    if(sh_0 < int(0))
+    {
+
+#line 211
+        uint32_t s2_1 = uint32_t(- sh_0);
+
+
+
+        uint32_t back_0 = 64U - s2_1;
+
+        uint64_t _S21 = (r9_1 << s2_1) | (r8_1 >> back_0);
+
+#line 217
+        r10_0 = (r10_0 << s2_1) | (r9_1 >> back_0);
+
+#line 217
+        r9_1 = _S21;
+
+#line 210
+    }
+    else
+    {
+
+#line 219
+        if(sh_0 > int(0))
+        {
+
+#line 220
+            uint32_t s2_2 = uint32_t(sh_0);
+
+
+
+            uint64_t _S22 = (r9_1 >> s2_2) | (r10_0 << (64U - s2_2));
+
+#line 224
+            r10_0 = r10_0 >> s2_2;
+
+#line 224
+            r9_1 = _S22;
+
+#line 219
+        }
+
+#line 210
+    }
+
+#line 227
+    int32_t r11_3 = r11_2 + int(1023);
+
+    *hi_1 = ucrt_b2d_0(((r10_0 & 18442240474082181119ULL) | rdx_0) | (uint64_t(r11_3) << 52U));
+    *lo_1 = 0.0;
+    if(r9_1 != 0ULL)
+    {
+
+#line 232
+        uint32_t lz1_0 = uint32_t(int(63) - ucrt_hibit_0(r9_1)) + 1U;
+
+#line 232
+        uint64_t mant_0;
+        if(lz1_0 >= 64U)
+        {
+
+#line 233
+            mant_0 = 0ULL;
+
+#line 233
+        }
+        else
+        {
+
+#line 233
+            mant_0 = (r9_1 << lz1_0) >> 12U;
+
+#line 233
+        }
+
+        *lo_1 = ucrt_b2d_0((mant_0 | rdx_0) | (uint64_t(r11_3 - int32_t(lz1_0 + 52U)) << 52U));
+
+#line 231
+    }
+
+#line 237
+    return n3_0;
+}
+
+static double ucrt_sin_poly_0(double r_2)
+{
+
+#line 241
+    double x2_0 = r_2 * r_2;
+    double p_0 = (F64_fma((x2_0), (2.75573192239858925e-06), ((U32_asdouble((436314138U), (3207201184U))))));
+    double p2_0 = (F64_fma((x2_0), (p_0), ((U32_asdouble((286331153U), (1065423121U))))));
+    double p3_0 = (F64_fma((x2_0), (p2_0), (-0.16666666666666666)));
+    double t_0 = r_2 * x2_0;
+    return (F64_fma((p3_0), (t_0), (r_2)));
+}
+
+static double ucrt_cos_poly_0(double r_3)
+{
+
+#line 250
+    double x2_1 = r_3 * r_3;
+    double h_1 = x2_1 * 0.5;
+    double a_1 = 1.0 - h_1;
+    double b_2 = (F64_fma((x2_1), (-2.75573192239858883e-07), ((U32_asdouble((436314137U), (1056571808U))))));
+    double b2_0 = (F64_fma((x2_1), (b_2), ((U32_asdouble((381774870U), (3210133868U))))));
+    double b3_0 = (F64_fma((x2_1), (b2_0), ((U32_asdouble((1431655765U), (1067799893U))))));
+    double x4_0 = x2_1 * x2_1;
+    return (F64_fma((b3_0), (x4_0), (a_1)));
+}
+
+static float ucrt_cosf_0(float xf_0)
+{
+
+#line 261
+    uint32_t xb_0 = (F32_asuint((xf_0)));
+    uint32_t ax_0 = xb_0 & 2147483647U;
+    if(ax_0 >= 2139095040U)
+    {
+
+#line 263
+        float _S23;
+        if(ax_0 > 2139095040U)
+        {
+
+#line 264
+            _S23 = (U32_asfloat((xb_0 | 4194304U)));
+
+#line 264
+        }
+        else
+        {
+
+#line 264
+            _S23 = (U32_asfloat((4290772992U)));
+
+#line 264
+        }
+
+#line 264
+        return _S23;
+    }
+    double xs_0 = double(xf_0);
+    double ab_1 = (F64_abs((xs_0)));
+    if(ax_0 > 1061752795U)
+    {
+
+#line 268
+        uint32_t n3_1;
+
+#line 268
+        double r_4;
+
+
+        if(ax_0 < 1330188251U)
+        {
+
+#line 272
+            double t_1 = (F64_fma((ab_1), (0.63661977236758138), (0.5)));
+            int32_t n_0 = int32_t(t_1);
+
+            double nd_0 = double(n_0);
+            double r2_0 = (F64_fma((- nd_0), (1.5707963267341256), (ab_1)));
+            double nl_0 = nd_0 * 6.07710050650619225e-11;
+            double _S24 = r2_0 - nl_0;
+
+#line 278
+            n3_1 = uint32_t(n_0) & 3U;
+
+#line 278
+            r_4 = _S24;
+
+#line 271
+        }
+        else
+        {
+
+#line 280
+            double hi_2 = 0.0;
+            double lo_2 = 0.0;
+            uint32_t _S25 = ucrt_ph_0(ab_1, &hi_2, &lo_2);
+
+            double htop_0 = ucrt_b2d_0((ucrt_d2b_0(hi_2)) & 18446744073575333888ULL);
+            double hlow_0 = hi_2 - htop_0;
+            double p_1 = hi_2 * 1.5707963267948966;
+            double q0_0 = htop_0 * 1.5707963109016418;
+            double q1_0 = q0_0 - p_1;
+            double q2_0 = (F64_fma((hlow_0), (1.5707963109016418), (q1_0)));
+            double q3_0 = (F64_fma((htop_0), (1.58932547122958567e-08), (q2_0)));
+            double q4_0 = (F64_fma((hlow_0), (1.58932547122958567e-08), (q3_0)));
+            double w0_0 = lo_2 * 1.5707963267948966;
+            double w1_0 = (F64_fma((hi_2), (6.1232339957367648e-17), (w0_0)));
+            double q5_0 = q4_0 + w1_0;
+            double _S26 = p_1 + q5_0;
+
+#line 295
+            n3_1 = _S25;
+
+#line 295
+            r_4 = _S26;
+
+#line 271
+        }
+
+#line 271
+        double res_0;
+
+#line 298
+        if((n3_1 & 1U) == 1U)
+        {
+
+#line 298
+            res_0 = ucrt_sin_poly_0(r_4);
+
+#line 298
+        }
+        else
+        {
+
+#line 298
+            res_0 = ucrt_cos_poly_0(r_4);
+
+#line 298
+        }
+
+#line 304
+        return float(ucrt_b2d_0((ucrt_d2b_0(res_0)) ^ (((uint64_t(n3_1) + 1ULL) >> 1U) << 63U)));
+    }
+    if(ax_0 >= 1006632960U)
+    {
+
+#line 307
+        return float(ucrt_cos_poly_0(xs_0));
+    }
+    if(ax_0 >= 956301312U)
+    {
+
+#line 310
+        double hx_0 = xs_0 * 0.5;
+        return float((F64_fma((- xs_0), (hx_0), (1.0))));
+    }
+    return (U32_asfloat((1065353216U)));
+}
+
+
+void _main_0(void* _S27, void* entryPointParams_0, void* globalParams_1)
+{
+
+#line 317
+    ComputeThreadVaryingInput * _S28 = (slang_bit_cast<ComputeThreadVaryingInput *>(_S27));
+
+#line 317
+    KernelContext_0 kernelContext_3;
+
+#line 317
+    (&kernelContext_3)->globalParams_0 = (slang_bit_cast<GlobalParams_0*>(globalParams_1));
+
+#line 317
+    Vector<uint32_t, 3>  _S29 = _S28->groupID;
+
+#line 317
+    Vector<uint32_t, 3>  _S30 = _S28->groupThreadID;
+    uint32_t _S31 = _S28->groupID.y;
+
+#line 318
+    uint32_t _S32 = pw_0(54U, &kernelContext_3);
+
+#line 318
+    uint32_t e_2 = (_S31 * _S32 + _S29.x) * 256U + _S30.x;
+
+#line 318
+    uint32_t _S33 = pw_0(53U, &kernelContext_3);
+    if(e_2 >= _S33)
+    {
+
+#line 320
         return;
     }
     uint32_t i0_2;
@@ -4424,17 +5149,17 @@ void _main_0(void* _S16, void* entryPointParams_0, void* globalParams_1)
     uint32_t i2_2;
     uint32_t i3_2;
 
-#line 50
-    unravel4_0(e_1, 1U, &i0_2, &i1_2, &i2_2, &i3_2, &kernelContext_3);
+#line 325
+    unravel4_0(e_2, 1U, &i0_2, &i1_2, &i2_2, &i3_2, &kernelContext_3);
 
-#line 50
-    uint32_t _S23 = off4_0(1U, i0_2, i1_2, i2_2, i3_2, &kernelContext_3);
+#line 325
+    uint32_t _S34 = off4_0(1U, i0_2, i1_2, i2_2, i3_2, &kernelContext_3);
 
-#line 50
-    uint32_t _S24 = off4_0(10U, i0_2, i1_2, i2_2, i3_2, &kernelContext_3);
+#line 325
+    uint32_t _S35 = off4_0(10U, i0_2, i1_2, i2_2, i3_2, &kernelContext_3);
 
-#line 55
-    *(&((&kernelContext_3)->globalParams_0->dst_0)[_S23]) = (F32_cos((*(&((&kernelContext_3)->globalParams_0->s0_0)[_S24]))));
+#line 330
+    *(&((&kernelContext_3)->globalParams_0->dst_0)[_S34]) = ucrt_cosf_0(*(&((&kernelContext_3)->globalParams_0->s0_0)[_S35]));
     return;
 }
 
