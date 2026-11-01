@@ -20,15 +20,16 @@ measured.
 
 ## 2. Working rules (from the user)
 
-- Tools come from pixi. Documented exceptions: Godot, slangc, and Lean via elan.
+- Tools come from pixi. Documented exceptions: Godot, slangc, and Lean via elan. (`AGENTS.md`, `check_no_auto.py` and
+  `check_commit_style.py` live in the weftspun workspace repo, not in this one.)
 - An unmet precondition is a FAIL, not a silent skip (working-agreements rule 3).
 - Configure through the host's own mechanism, not environment variables (`AGENTS.md`).
 - Every gate needs a negative control. A zero-vs-zero match is not evidence; a gate must fail on an all-zero reference.
 - Do not touch shared checkouts. Work in scratch clones and keep shared repos clean.
 - Read the guest's own `RESULT:` line, not the job state.
-- Ask before any push. **Do not run `gh` at all** (rescinded, fact #662). Push with plain `git` and give the user a compare
-  URL plus a one-sentence PR body; the user opens and merges the PR. CI status cannot be read without `gh`, so if a check
-  fails the user pastes the job log.
+- Ask before any push. `gh` was rescinded on 2026-10-31 and **re-allowed later the same day** ("use gh because it gives you
+  access"; fact #662 now says so). It is logged in as `fire` with scopes gist, read:org, repo, workflow, and reads CI status and
+  logs. Still give the user a compare URL plus a one-sentence PR body; the user opens and merges PRs unless told otherwise.
 - `main` refuses direct pushes (repository rule violations). Branch, push, compare URL.
 - New code has no `auto` (`check_no_auto.py`). Commit style: `check_commit_style.py --base ...`, sentence case.
 - Reply style: calibrated words with probabilities for unverified claims (fact #218, #42); PR bodies are one sentence.
@@ -36,8 +37,16 @@ measured.
 
 ## 3. What exists on `main`
 
-PRs merged so far: 14, 15, 16, 17, 18, 19, 20, 22, 24, 25, 26, 27, 28 (13 PRs), plus 108 and 109 in
-`transport-meshing-pen`.
+PRs merged on this repo so far: #14 through #28 (all fifteen; #1 to #13 predate this work). In `transport-meshing-pen`
+(the build tree) PRs #108 and #109 merged.
+
+### NOT merged: one line in `transport-meshing-pen`
+
+`transport-meshing-pen` branch `dev/pjrt-rd-stablehlo` (commit `22047c7`, pushed, one line in `CMakeLists.txt`: "Build
+stablehlo.cpp into the pjrt_rd library") is **not on that repo's `main`**. Its PR is **#110, open**, and its CI is **red for a
+second, different reason: see section 11 (PARKED)**. Until it lands, a fresh meshing-pen checkout builds `pjrt_rd` without
+`stablehlo.cpp`. Compare: https://github.com/V-Sekai-fire/transport-meshing-pen/compare/main...dev/pjrt-rd-stablehlo
+(suggested body: "Builds stablehlo.cpp into the pjrt_rd library."). Everything measured in this file used that branch's build.
 
 | Piece | Where |
 |---|---|
@@ -190,15 +199,29 @@ take 1 to 4 minutes each.
 - Credentials: none are in this repo. A one-off token existed and is gone; the OpenBao creds dir on the desk exists but the nodes
   were unreachable. Never type secrets with the browser tool.
 
-## 8. Suggested next steps
+## 8. Where the work physically lives (read this before cleaning anything)
 
+- The session's tree is under Hermes's scratch directory `C:/Users/ernest.lee/AppData/Local/hermes/cache/scratch/`, which
+  Hermes prunes after 24 idle hours. Pushed branches are the durable copy. Nothing unpushed matters except: untracked `build*.log`
+  files in `weft/1-transport/meshing-pen` (disposable) and the exploratory host scripts in `scratch/exact/` (about 100 files:
+  the formula-hunt scripts `rsqrt_*.py`, `patch_*.py` edit helpers, `pinned_check*.py`, `sign_*.py`). The ones that mattered were
+  copied into `tests/`; the rest can be re-derived from section 4.
+- Also under scratch: `weft/` (the tree rebuilt from `V-Sekai-fire` clones), `pjrt-rd-env/` and `stablehlo-gen/` (pixi projects),
+  `pen-build/` (the Godot run directory with the logs `sh*.log`, `r9-*` ... `r18-*`), `pwd-lib/` (a clone of
+  `plausible-witness-dag`), `rsqrt-witness/`.
+- The skill `godot-sandbox-build-workflow` (in `~/.hermes/skills`) holds the build recipe and `references/pjrt-rd-plugin.md`.
+- Sessions: the live Hermes session was `20261031_120418_369657`; recover older detail with `session_search` on that id.
+
+## 9. Suggested next steps
+
+0. Finish section 11 (the parked CI fix), then re-run #110's failed job. The PR already exists.
 1. Measure XLA's dot trees for large K and decide: rule, table, or stay at the rel-L2 bar (section 5.1).
 2. `iota` / `compare` / `select` mask pieces, then a causal-attention case at the rel-L2 bar.
 3. Translate UCRT `powf` and lower `power` and f32 `iota`, so computed RoPE tables are bit-equal.
 4. Measure `tanh`, `logistic`, `erf`, `expm1`, `log1p`, `tan`, then `reduce-window`, `while`, gather/scatter, sort, conv.
 5. Re-run the five ggml users and Kimodo end to end through the PJRT path as ops land, and keep the XFAIL table shrinking.
 
-## 9. Related facts and references
+## 10. Related facts and references
 
 - Mooncake PR #2733 was the model for the ggml mapping (`jax` -> StableHLO -> ggml graph + `Program`).
 - RFD 2335 was deleted upstream by `be28a1f1`; RFD 2294 says agent knowledge lives in RFDs, not desk memory.
@@ -208,3 +231,63 @@ take 1 to 4 minutes each.
 - XNNPACK's `src/f32-vsin/rational-5-4.c.in` is YNNPACK's own sin/cos (a 5/4 rational); XLA CPU's jitted `sine` does not use it
   (58% of inputs differ).
 - Facts in the holographic store: #656 (pjrt-rd plan), #659, #661, #662 (no `gh`), #663 (direct commit to `main` is infeasible).
+
+## 11. PARKED (2026-11-01): the CI failure on transport-meshing-pen PR #110
+
+State when parked: nothing of this is committed except this note. Everything below was found with `gh`.
+
+**Failure.** PR #110, workflow `guests`, run `41229129739`. The first run (2026-10-31 18:22 UTC) died in all three guest jobs
+at CMake with `Cannot find source file: .../ggml-rd/guest/pjrt-rd/stablehlo.cpp`: `ggml-rd` `main` did not have the file yet
+(timing, now fixed). After `gh run rerun --failed` (02:52 UTC on Nov 1): `build (curvenet)`, `build (dress-on-lasso)` and
+`build (host)` pass; **`build (probes-ggml)` fails** compiling `ggml_rd_cpu_kernels.cpp`:
+
+```
+slang/exp_f32.slang:45:5: error: unknown type name 'precise'
+   45 |     precise float xi_0;
+```
+18 errors in `exp_f32`, then `log_f32` (clang stops at 20, so other kernels may follow).
+
+**Cause (reproduced).** CI runs `kernels/ggml/gen.sh`, which regenerates `cpp/*_emit.cpp` with slangc **2026.13.1**
+(`SLANG_VERSION` in `guests.yml`). That version's C++ target writes the HLSL qualifier `precise` into the C++ (`precise float
+xi_0;`, `precise float n0_0 = ...`). My Lean kernels declare intermediates `precise` (so SPIR-V gets NoContraction). My local
+builds used slangc 2026.20, which does not write it, so nothing failed locally and the committed `*_emit.cpp` have no `precise`.
+Reproduced with `slangc.exe -target cpp` from the 2026.13.1 release (downloaded to `scratch/slang13/`): `precise` appears 18
+times in `exp_f32`, 19 in `sin_f32`, 34 in `rsqrt_zen2_f32`; `div_f32`, `sqrt_f32`, `log_f32` and `cos_f32` declare it too.
+`contract-ggml-rd`'s own CI is only `lean.yml`, so it never compiled the C++ and stayed green.
+
+**Drafted fix (not committed, not verified).** The CPU runner is generated by `tests/ggml_rd_kernels/gen_host_kernels.py` (used by
+the guest build, `tests/ggml_rd_kernels` and `web/`). Define `precise` away around the emit includes; the runner already compiles
+with `-ffp-contract=off`, which is what `precise` asks for. In `main()`, after the three `#define SLANG_PRELUDE_EXTERN_C*` lines:
+
+```diff
+     w.append('#define SLANG_PRELUDE_EXTERN_C_END')
+     w.append('')
++    w.append('// slangc 2026.13 writes the HLSL qualifier `precise` into its cpp emit (a local declared precise);')
++    w.append('// it is not C++. The runner compiles with -ffp-contract=off, which is what precise asks for.')
++    w.append('#define precise')
+     for k in (k for k in kernels if has_cpp[k]):
+         w.append('namespace k_%s {' % k)
+         w.append('#include "%s_emit.cpp"' % k)
+         w.append('}')
++    w.append('#undef precise')
+     w.append('')
+     w.append('#include "run_kernel.h"')
+```
+
+**Left to do**
+1. Apply the patch on a branch of `contract-ggml-rd`. To test, a temp directory with the 2026.13.1 emits of the seven `precise`
+   kernels is needed (`slangc -target cpp -o <dir>/<k>_emit.cpp kernels/ggml/slang/<k>.slang` for div, sqrt, exp, log,
+   rsqrt_zen2, sin, cos, copied over a copy of `kernels/ggml/cpp`; the one prepared in `scratch/slang13/cppcopy` is pruned after
+   24 idle hours, and the 2026.13.1 zip comes from `gh release download v2026.13.1 --repo shader-slang/slang`).
+2. Check it: run `gen_host_kernels.py` over that directory and `clang++ -fsyntax-only` the runner (the guest build does the same
+   with `--target=riscv64-unknown-linux-gnu`); look at `web/CMakeLists.txt`, which also includes the emits.
+3. Negative control: the same run without the `#define precise` must fail with the error above.
+4. Commit, push a branch, give the user the compare URL; after it merges, `gh run rerun 41229129739 --repo
+   V-Sekai-fire/transport-meshing-pen --failed`; the job needs `ggml-rd` `main` to carry the fix.
+5. Considered and not chosen: raising `SLANG_VERSION` to 2026.20 in `guests.yml`. `gen.sh` documents that 2026.13.1's SPIR-V
+   keeps unused bindings only with `-O0 -preserve-params`, and the repo was moved to 2026.13 on purpose (PR #10); a version bump
+   is a larger change than a host-side define. Another option is to stop writing `precise` for the cpp target in the Lean
+   emitter, which would need a second emit path.
+6. The `web/` (WebGPU) path also uses these kernels; the `tint` census was not re-run with the exact exp, log, rsqrt, sin and cos.
+7. Housekeeping found on the way: PR #29 merged the first `RESUME.md`; the audit fixes (commit `0c1c7cf`: PRs #14 to #28, the
+   unmerged meshing-pen branch, where the work lives) were pushed to `dev/resume` after that merge and reach `main` only with this note.
