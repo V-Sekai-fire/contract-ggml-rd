@@ -918,9 +918,12 @@ size_t probe_refusals(PJRT_Client *client, size_t *total) {
 	};
 	static const char *kWholeModules[][2] = {
 		{ "integer_type", "module @m {\n  func.func public @main(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {\n    %0 = stablehlo.negate %arg0 : tensor<4xi32>\n    return %0 : tensor<4xi32>\n  }\n}" },
-		{ "rank_five", "module @m {\n  func.func public @main(%arg0: tensor<1x1x1x1x4xf32>) -> (tensor<1x1x1x1x4xf32>) {\n    %0 = stablehlo.negate %arg0 : tensor<1x1x1x1x4xf32>\n    return %0 : tensor<1x1x1x1x4xf32>\n  }\n}" },
+		{ "rank_five", "module @m {\n  func.func public @main(%arg0: tensor<2x2x2x2x2xf32>) -> (tensor<2x2x2x2x2xf32>) {\n    %0 = stablehlo.negate %arg0 : tensor<2x2x2x2x2xf32>\n    return %0 : tensor<2x2x2x2x2xf32>\n  }\n}" },
 		{ "dynamic_shape", "module @m {\n  func.func public @main(%arg0: tensor<?xf32>) -> (tensor<?xf32>) {\n    %0 = stablehlo.negate %arg0 : tensor<?xf32>\n    return %0 : tensor<?xf32>\n  }\n}" },
-		{ "two_functions", "module @m {\n  func.func public @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    %0 = stablehlo.negate %arg0 : tensor<4xf32>\n    return %0 : tensor<4xf32>\n  }\n  func.func private @helper(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    return %arg0 : tensor<4xf32>\n  }\n}" },
+		{ "recursive_call", "module @m {\n  func.func public @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    %0 = call @loop(%arg0) : (tensor<4xf32>) -> tensor<4xf32>\n    return %0 : tensor<4xf32>\n  }\n  func.func private @loop(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    %0 = call @loop(%arg0) : (tensor<4xf32>) -> tensor<4xf32>\n    return %0 : tensor<4xf32>\n  }\n}" },
+		{ "call_undefined", "module @m {\n  func.func public @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    %0 = call @nope(%arg0) : (tensor<4xf32>) -> tensor<4xf32>\n    return %0 : tensor<4xf32>\n  }\n}" },
+		{ "runtime_predicate", "module @m {\n  func.func public @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    %0 = stablehlo.compare  GT, %arg0, %arg0,  FLOAT : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xi1>\n    %1 = stablehlo.select %0, %arg0, %arg0 : tensor<4xi1>, tensor<4xf32>\n    return %1 : tensor<4xf32>\n  }\n}" },
+		{ "runtime_integer", "module @m {\n  func.func public @main(%arg0: tensor<4xi32>) -> (tensor<4xf32>) {\n    %0 = stablehlo.convert %arg0 : (tensor<4xi32>) -> tensor<4xf32>\n    return %0 : tensor<4xf32>\n  }\n}" },
 	};
 	size_t held = 0;
 	std::vector<std::pair<std::string, std::pair<std::string, PJRT_Error_Code> > > all;
@@ -928,7 +931,7 @@ size_t probe_refusals(PJRT_Client *client, size_t *total) {
 		all.push_back({ r.name, { std::string("module @m {\n  func.func public @main(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {\n    ") + r.body + "\n  }\n}", r.code } });
 	}
 	for (const char *const *w : kWholeModules) {
-		all.push_back({ w[0], { w[1], std::strstr(w[0], "two_functions") != nullptr || std::strstr(w[0], "dynamic") != nullptr || std::strstr(w[0], "integer") != nullptr || std::strstr(w[0], "rank") != nullptr ? PJRT_Error_Code_UNIMPLEMENTED : PJRT_Error_Code_INVALID_ARGUMENT } });
+		all.push_back({ w[0], { w[1], std::strstr(w[0], "undefined") != nullptr ? PJRT_Error_Code_INVALID_ARGUMENT : PJRT_Error_Code_UNIMPLEMENTED } });
 	}
 	for (const std::pair<std::string, std::pair<std::string, PJRT_Error_Code> > &r : all) {
 		PJRT_Program prog;
