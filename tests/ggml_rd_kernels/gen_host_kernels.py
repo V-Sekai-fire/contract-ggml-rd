@@ -76,6 +76,10 @@ def main():
     w.append('#define SLANG_PRELUDE_EXTERN_C')
     w.append('#define SLANG_PRELUDE_EXTERN_C_START')
     w.append('#define SLANG_PRELUDE_EXTERN_C_END')
+    w.append('// Slang keeps the HLSL keyword `precise` in its C++ (exp_f32 and log_f32 use it); C++ has no such word.')
+    w.append('#ifndef precise')
+    w.append('#define precise')
+    w.append('#endif')
     w.append('')
     for k in (k for k in kernels if has_cpp[k]):
         w.append('namespace k_%s {' % k)
