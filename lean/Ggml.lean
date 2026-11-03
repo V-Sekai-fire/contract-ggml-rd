@@ -33,6 +33,7 @@ import Ggml.SlangCodegen.Arange
 import Ggml.SlangCodegen.TimestepEmbedding
 import Ggml.SlangCodegen.Conv2d
 import Ggml.SlangCodegen.ConvTranspose2d
+import Ggml.SlangCodegen.XlaCompare
 
 /-!
 # `Ggml` — the ggml-rd op kernels (Lean → Slang → spirv | cpp)
@@ -76,6 +77,7 @@ def kernels : List (String × LeanSlang.SlangShaderModule) :=
   ++ Ggml.SlangCodegen.TimestepEmbedding.kernels
   ++ Ggml.SlangCodegen.Conv2d.kernels
   ++ Ggml.SlangCodegen.ConvTranspose2d.kernels
+  ++ Ggml.SlangCodegen.XlaCompare.kernels
 
 /-- Control kernels: deliberately off the fixed layout, for gates only
     (kernels/ggml/controls.txt). -/

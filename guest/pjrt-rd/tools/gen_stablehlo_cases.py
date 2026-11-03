@@ -22,6 +22,7 @@ XFAIL = {
     "rms_norm_f32": "contains a float sum whose XLA CPU order is not reproduced (see reduce_sum_random); pinned_rms_scale shows the sum and sqrt part is bit-equal when the order is written out",
     "mlp_pre": "XLA CPU's dot (a YNNPACK fusion) accumulates in a shape-dependent tree: for 4x16 @ 16x8 it is the same tree as a float reduce of 16, and a sequential fused multiply-add chain matches 14 of 32 elements; the bias add after it is exact (dot then add equals XLA in 32 of 32)",
     "mlp_f32": "its dot is not bit-equal (see mlp_pre); the exp after it is exact",
+    "causal_attention": "its two dot_generals accumulate in XLA CPU's dot tree (see dot_batched) and its softmax sum in XLA's reduce tree (see reduce_sum_random); the mask, maximum, exp and divide around them are bit-equal (causal_softmax_pinned), and so are dots with two free or two batch dimensions when every partial sum is exact (dot_two_free_exact, dot_two_batch_exact)",
 }
 
 
@@ -160,6 +161,42 @@ def cases():
     add("divide_by_row", lambda a, b: a / b[:, None], [rand(rng, (8, 16), 2.0), positive(rng, (8,))], ("stablehlo.divide", "stablehlo.multiply"), "a / broadcast(b), b a vector")
     add("softmax_f32", lambda a: jax.nn.softmax(a, axis=-1), [rand(rng, (8, 16), 2.0)], ("stablehlo.subtract", "stablehlo.add"), "reduce maximum, exp, reduce add, divide")
     add("rms_norm_f32", lambda a: a * jax.lax.rsqrt((a * a).mean(axis=-1, keepdims=True) + 1e-6), [rand(rng, (8, 16))], ("stablehlo.rsqrt", "stablehlo.sqrt"), "reduce add, divide, rsqrt, broadcast, multiply")
+
+    # Values known at compile time: iota, i32 arithmetic, compare, and, convert and constant i1 masks are folded
+    # on the host; a select with a known predicate picks each element by a gather, which copies its bits.
+    add("mask_where", lambda a: jnp.where(jnp.tril(jnp.ones((16, 16), bool)), a, -jnp.inf), [rand(rng, (16, 16))],
+        ("compare GE", "compare LT"), "a causal mask: private functions, iota, compare and select")
+    const_mask = np.random.default_rng(7).random((8, 16)) > 0.5
+    add("select_const_mask", lambda a, b: jnp.where(const_mask, a, b), [rand(rng, (8, 16)), rand(rng, (8, 16))],
+        ("%arg0, %arg1, %arg2", "%arg0, %arg2, %arg1"), "select by a constant i1 mask printed as hex bytes")
+    add("iota_f32_add", lambda a: a + jnp.arange(16, dtype=jnp.float32), [rand(rng, (4, 16))], ("stablehlo.add %", "stablehlo.subtract %"), "an f32 iota folded to a constant")
+    add("iota_i32_convert", lambda a: a * (jnp.arange(16) - 5).astype(jnp.float32), [rand(rng, (4, 16))], ("dense<5>", "dense<4>"), "i32 iota, subtract and convert folded at compile time")
+    def causal_softmax_pinned(s):
+        n = s.shape[-1]
+        m = jnp.where(jnp.tril(jnp.ones((n, n), bool)), s, -jnp.inf)
+        e = jnp.exp(m - jnp.max(m, axis=-1, keepdims=True))
+        return e / tree_sum(e)[..., None]
+    add("causal_softmax_pinned", causal_softmax_pinned, [rand(rng, (2, 16, 16), 2.0)], ("compare GE", "compare GT"), "causal mask, then softmax with the sum order pinned")
+    add("dot_two_free_exact", lambda a, b: jnp.einsum("mk,knp->mnp", a, b), [ints(rng, (4, 8)), ints(rng, (8, 3, 5))], ("OPERANDS", ""), "dot_general with two free dimensions on one side, integer-valued")
+    add("dot_two_batch_exact", lambda a, b: jnp.einsum("abmk,abkn->abmn", a, b), [ints(rng, (2, 3, 4, 8)), ints(rng, (2, 3, 8, 5))], ("OPERANDS", ""), "dot_general with two batch dimensions, integer-valued")
+    # Values computed at run time: XLA's maximum, minimum and compares (denormals read as zero, NaN-propagating,
+    # -0 below +0) run as the xla_compare kernels; a select of a run-time predicate gathers by a computed index.
+    spv = np.array([0.0, -0.0, 1.0, -1.0, np.inf, -np.inf, np.nan, 1e-45, -1e-45, 1e-39, 1.17549435e-38, 2.0, -2.0, 3.4028235e38], np.float32)
+    pa, pb = (np.array(t, np.float32) for t in zip(*[(x, y) for x in spv for y in spv]))
+    add("relu_special", lambda a: jax.nn.relu(a), [np.concatenate([spv, rand(rng, (114,))]).astype(np.float32)], ("stablehlo.maximum", "stablehlo.minimum"), "ReLU: maximum against zero, special values included")
+    add("clip_special", lambda a: jnp.clip(a, -1.0, 1.0), [np.concatenate([spv, rand(rng, (114,), 2.0)]).astype(np.float32)], ("stablehlo.minimum", "stablehlo.maximum"), "clip: maximum then minimum against constants")
+    add("maximum_pairs", lambda a, b: jnp.maximum(a, b), [pa, pb], ("stablehlo.maximum", "stablehlo.minimum"), "maximum of every pair of special values")
+    add("minimum_pairs", lambda a, b: jnp.minimum(a, b), [pa, pb], ("stablehlo.minimum", "stablehlo.maximum"), "minimum of every pair of special values")
+    add("compare_pairs", lambda a, b: jnp.stack([a > b, a >= b, a < b, a <= b, a == b, a != b]).astype(jnp.float32), [pa, pb], ("compare GT", "compare GE"),
+        "the six compares of every pair of special values, converted to f32")
+    add("where_runtime", lambda a, b: jnp.where(a > b, a, b), [pa, pb], ("compare GT", "compare LT"), "select by a predicate computed at run time")
+    tiny = (np.float32(2.0) ** -np.arange(60, 90, dtype=np.float32)).astype(np.float32)
+    add("multiply_denormal", lambda a, b: a * b, [np.resize(tiny, 128).astype(np.float32), np.repeat(np.float32([1e-10, 3e-20, 0.5, 7e-30]), 32)], ("stablehlo.multiply", "stablehlo.add"),
+        "products in the denormal range: XLA CPU flushes them to zero (FTZ)")
+    add("logic_runtime", lambda a, b: jnp.where(((a > 0) & (b < 0)) | ~(a == b), a, b), [rand(rng, (8, 16)), rand(rng, (8, 16)).round()], ("stablehlo.or", "stablehlo.and"), "and, or and not of run-time predicates")
+    qkv = [rand(rng, (1, 8, 2, 16)) for _ in range(3)]
+    add("causal_attention", lambda q, k, v: jax.nn.dot_product_attention(q, k, v, is_causal=True), qkv, ("compare GE", "compare GT"),
+        "JAX's causal dot_product_attention: calls, rank-5 values, iota, compare, and, select, dot_general with two free dimensions")
     return out
 
 
@@ -201,7 +238,7 @@ def main():
         text = lower(fn, args)
         res = np.asarray(jax.jit(fn)(*[jnp.asarray(a) for a in args]))
         bad = mutated(text, rule)
-        if "stablehlo.custom_call" in text or "func.call" in text:
+        if "stablehlo.custom_call" in text:
             raise SystemExit("%s lowered to something outside the slice:\n%s" % (name, text))
         lines.append("// %s: %s" % (name, note))
         for k, a in enumerate(args):

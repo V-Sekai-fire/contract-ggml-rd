@@ -1,5 +1,5 @@
-// StableHLO text to a Program: the module's single func @main becomes a ggml graph, which is then
-// described record by record. Row-major shapes become ggml ne by reversing the dimensions.
+// StableHLO text to a Program: the module's func @main, with every call to its private functions inlined,
+// becomes a ggml graph, which is then described record by record. Row-major shapes become ggml ne by reversing the dimensions.
 #pragma once
 
 #include <string>

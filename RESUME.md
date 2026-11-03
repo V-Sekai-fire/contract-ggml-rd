@@ -291,3 +291,22 @@ with `-ffp-contract=off`, which is what `precise` asks for. In `main()`, after t
 6. The `web/` (WebGPU) path also uses these kernels; the `tint` census was not re-run with the exact exp, log, rsqrt, sin and cos.
 7. Housekeeping found on the way: PR #29 merged the first `RESUME.md`; the audit fixes (commit `0c1c7cf`: PRs #14 to #28, the
    unmerged meshing-pen branch, where the work lives) were pushed to `dev/resume` after that merge and reach `main` only with this note.
+
+## 12. 2026-11-03: masks, attention plumbing and run-time compares (desk: RTX 4090, same Zen 2)
+
+The desk's scratch tree was pruned; the root is rebuilt from V-Sekai-fire clones at `C:/Users/ernest.lee/src/pjrt-weft`
+(scripts in `scripts/`, logs in `logs/<tag>/`). Long chains run as a Windows scheduled task (`schtasks /create ... /it`,
+then `/run`): a process started from ssh, detached or not, dies when the session closes. Baseline on the 4090 equals the
+3090's (58 cases, 51 bit-equal).
+
+- Lowering: calls inlined; rank above 4 when at most four dimensions exceed one; i32 and i1 values known at compile time
+  folded on the host (`iota`, `compare`, `and`/`or`/`xor`/`not`, `minimum`, integer `convert`, hex-byte constants);
+  `select` by a gather (`get_rows`), with a run-time predicate's row index computed on the device and the result flushed
+  (x86 XLA returns a selected denormal as zero); `dot_general` with any number of batch, free and contracting dims.
+- Kernels: `XlaCompare.lean` (8 kernels, XLA's max/min/compare semantics: DAZ, NaN-propagating, -0 < +0), packed as
+  `GGML_OP_MAP_CUSTOM2` in `guest/ggml-rd/ops/xla_compare.cpp`. Measurement: `guest/pjrt-rd/tools/minmax_xla.py`.
+- Cases: 74; JAX's causal `dot_product_attention` compiles and runs (XFAIL: dot and sum order). Refusals: 25.
+- Controls run: the gather index inverted (mask cases fail); max and min kernels swapped (relu, clip, max/min pairs and
+  logic fail). All 11 gates pass on slice 1; slice 2 passes 10 of 11 before the select flush (`where_runtime`).
+- The RTX 4090 flushes denormal float products to zero (`multiply_denormal` bit-equal), as XLA does.
+- Next: `tanh` and `erf` (GELU), `gather` with run-time i32 indices, `convolution`, `power`, run-time i32 arithmetic.
