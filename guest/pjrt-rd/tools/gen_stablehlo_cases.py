@@ -179,6 +179,21 @@ def cases():
     add("causal_softmax_pinned", causal_softmax_pinned, [rand(rng, (2, 16, 16), 2.0)], ("compare GE", "compare GT"), "causal mask, then softmax with the sum order pinned")
     add("dot_two_free_exact", lambda a, b: jnp.einsum("mk,knp->mnp", a, b), [ints(rng, (4, 8)), ints(rng, (8, 3, 5))], ("OPERANDS", ""), "dot_general with two free dimensions on one side, integer-valued")
     add("dot_two_batch_exact", lambda a, b: jnp.einsum("abmk,abkn->abmn", a, b), [ints(rng, (2, 3, 4, 8)), ints(rng, (2, 3, 8, 5))], ("OPERANDS", ""), "dot_general with two batch dimensions, integer-valued")
+    # Values computed at run time: XLA's maximum, minimum and compares (denormals read as zero, NaN-propagating,
+    # -0 below +0) run as the xla_compare kernels; a select of a run-time predicate gathers by a computed index.
+    spv = np.array([0.0, -0.0, 1.0, -1.0, np.inf, -np.inf, np.nan, 1e-45, -1e-45, 1e-39, 1.17549435e-38, 2.0, -2.0, 3.4028235e38], np.float32)
+    pa, pb = (np.array(t, np.float32) for t in zip(*[(x, y) for x in spv for y in spv]))
+    add("relu_special", lambda a: jax.nn.relu(a), [np.concatenate([spv, rand(rng, (114,))]).astype(np.float32)], ("stablehlo.maximum", "stablehlo.minimum"), "ReLU: maximum against zero, special values included")
+    add("clip_special", lambda a: jnp.clip(a, -1.0, 1.0), [np.concatenate([spv, rand(rng, (114,), 2.0)]).astype(np.float32)], ("stablehlo.minimum", "stablehlo.maximum"), "clip: maximum then minimum against constants")
+    add("maximum_pairs", lambda a, b: jnp.maximum(a, b), [pa, pb], ("stablehlo.maximum", "stablehlo.minimum"), "maximum of every pair of special values")
+    add("minimum_pairs", lambda a, b: jnp.minimum(a, b), [pa, pb], ("stablehlo.minimum", "stablehlo.maximum"), "minimum of every pair of special values")
+    add("compare_pairs", lambda a, b: jnp.stack([a > b, a >= b, a < b, a <= b, a == b, a != b]).astype(jnp.float32), [pa, pb], ("compare GT", "compare GE"),
+        "the six compares of every pair of special values, converted to f32")
+    add("where_runtime", lambda a, b: jnp.where(a > b, a, b), [pa, pb], ("compare GT", "compare LT"), "select by a predicate computed at run time")
+    tiny = (np.float32(2.0) ** -np.arange(60, 90, dtype=np.float32)).astype(np.float32)
+    add("multiply_denormal", lambda a, b: a * b, [np.resize(tiny, 128).astype(np.float32), np.repeat(np.float32([1e-10, 3e-20, 0.5, 7e-30]), 32)], ("stablehlo.multiply", "stablehlo.add"),
+        "products in the denormal range: XLA CPU flushes them to zero (FTZ)")
+    add("logic_runtime", lambda a, b: jnp.where(((a > 0) & (b < 0)) | ~(a == b), a, b), [rand(rng, (8, 16)), rand(rng, (8, 16)).round()], ("stablehlo.or", "stablehlo.and"), "and, or and not of run-time predicates")
     qkv = [rand(rng, (1, 8, 2, 16)) for _ in range(3)]
     add("causal_attention", lambda q, k, v: jax.nn.dot_product_attention(q, k, v, is_causal=True), qkv, ("compare GE", "compare GT"),
         "JAX's causal dot_product_attention: calls, rank-5 values, iota, compare, and, select, dot_general with two free dimensions")

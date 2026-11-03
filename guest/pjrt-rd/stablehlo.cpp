@@ -1,5 +1,6 @@
 #include "stablehlo.h"
 #include "../ggml-rd/rsqrt_zen2.h"
+#include "../ggml-rd/xla_compare.h"
 
 #include <algorithm>
 #include <cctype>
@@ -319,6 +320,12 @@ Val known_val(Lowering &L, ggml_type type, const std::vector<int64_t> &shape, st
 Val as_type(Lowering &L, const Val &v, ggml_type type) {
 	if (v.type == type) {
 		return v;
+	}
+	if ((v.type == kPred && type == GGML_TYPE_F32) || (v.type == GGML_TYPE_F32 && type == kPred)) {
+		// An i1 value computed at run time is an f32 tensor of 0 and 1: only the label changes.
+		Val o = v;
+		o.type = type;
+		return o;
 	}
 	Val o = v;
 	o.t = ggml_cast(L.ctx, v.t, type);
@@ -1153,6 +1160,70 @@ std::vector<std::string> operands(const std::string &s, size_t &end) {
 	return o;
 }
 
+// A value the device can hold: a float, or an i1 as an f32 tensor of 0 and 1. A known i1 gets its tensor here.
+bool on_device(const Val &v) {
+	return is_float(v.type) || v.type == kPred;
+}
+
+Val device_f32(Lowering &L, const Val &v) {
+	if (v.type == kPred && v.t == nullptr) {
+		Val o = known_val(L, GGML_TYPE_F32, v.shape, v.hv);
+		o.type = kPred;
+		return as_type(L, o, GGML_TYPE_F32);
+	}
+	return as_type(L, v, GGML_TYPE_F32);
+}
+
+// XLA CPU's select on the reference desk (x86) returns a denormal operand as the zero of its sign (the Mac's XLA
+// keeps it; where_runtime measures it). The gather copies bits, so its result is flushed: xla_max(x, x) is x with
+// a denormal read as zero.
+ggml_tensor *select_flush(Lowering &L, ggml_tensor *t) {
+	return ggml_rd_xla_binary_op(L.ctx, t, t, GGML_RD_XLA_MAX);
+}
+
+// XLA CPU's maximum, minimum or a compare of two values computed at run time (xla_compare.h).
+Val xla_binary(Lowering &L, ggml_rd_xla_binary_kind kind, const Val &a, const Val &b, ggml_type result) {
+	const Val fa = device_f32(L, a);
+	const Val fb = device_f32(L, b);
+	Val o;
+	o.t = ggml_rd_xla_binary_op(L.ctx, contiguous(L, fa.t), contiguous(L, fb.t), kind);
+	o.shape = a.shape;
+	o.type = GGML_TYPE_F32;
+	return as_type(L, o, result);
+}
+
+// select with a predicate computed at run time: the same gather as a known one, with the row index computed on
+// the device as iota + N * (1 - p), exact for N up to 2^24, and converted to i32.
+bool select_runtime(Lowering &L, const Val &p, const Val &a, const Val &b, Val &out) {
+	const int64_t n = count_of(a.shape);
+	if (n > (int64_t(1) << 23)) {
+		return L.unsupported("stablehlo.select with a run-time predicate over more than 2^23 elements");
+	}
+	Val pv = device_f32(L, p);
+	ggml_tensor *pt = contiguous(L, pv.t);
+	if (p.shape.empty() && !a.shape.empty()) {
+		pt = ggml_repeat_4d(L.ctx, ggml_reshape_1d(L.ctx, pt, 1), n, 1, 1, 1);
+	}
+	pt = ggml_reshape_1d(L.ctx, pt, n);
+	std::vector<double> iota(static_cast<size_t>(n));
+	for (int64_t i = 0; i < n; ++i) {
+		iota[size_t(i)] = double(i);
+	}
+	const Val base = known_val(L, GGML_TYPE_F32, { n }, iota);
+	ggml_tensor *offs = ggml_scale(L.ctx, ggml_sub(L.ctx, filled_like(L, pt, 1.0f), pt), float(n));
+	ggml_tensor *idx = ggml_cast(L.ctx, ggml_add(L.ctx, base.t, offs), GGML_TYPE_I32);
+	Val fa = device_f32(L, a);
+	Val fb = device_f32(L, b);
+	ggml_tensor *ra = ggml_reshape_2d(L.ctx, contiguous(L, fa.t), 1, n);
+	ggml_tensor *rb = ggml_reshape_2d(L.ctx, contiguous(L, fb.t), 1, n);
+	Val o;
+	o.t = select_flush(L, ggml_get_rows(L.ctx, ggml_concat(L.ctx, ra, rb, 1), idx));
+	o.shape = { n, 1 };
+	o.type = GGML_TYPE_F32;
+	out = as_type(L, reshaped(L, o, a.shape), a.type);
+	return true;
+}
+
 // Element-wise ops on values known at compile time that are i32 or i1. Float arithmetic is never folded: it
 // runs on the device, so its rounding is the device's.
 bool host_binary(Lowering &L, const std::string &op, const Val &a, const Val &b, Val &out) {
@@ -1217,11 +1288,22 @@ bool host_unary(Lowering &L, const std::string &op, const Val &a, Val &out) {
 
 // stablehlo.compare of two values known at compile time.
 bool host_compare(Lowering &L, const std::string &dir, const std::string &kind, const Val &a, const Val &b, Val &out) {
-	if (!a.known || !b.known) {
-		return L.unsupported("stablehlo.compare of values computed at run time");
-	}
 	if (a.type != b.type || a.shape != b.shape) {
 		return L.fail("stablehlo.compare: operands differ in type or shape");
+	}
+	if (!a.known || !b.known) {
+		if (!on_device(a) || kind == "TOTALORDER") {
+			return L.unsupported("stablehlo.compare of i32 values computed at run time, or with TOTALORDER");
+		}
+		static const char *const kDirs[] = { "GT", "GE", "LT", "LE", "EQ", "NE" };
+		static const ggml_rd_xla_binary_kind kKinds[] = { GGML_RD_XLA_GT, GGML_RD_XLA_GE, GGML_RD_XLA_LT, GGML_RD_XLA_LE, GGML_RD_XLA_EQ, GGML_RD_XLA_NE };
+		for (int k = 0; k < 6; ++k) {
+			if (dir == kDirs[k]) {
+				out = xla_binary(L, kKinds[k], a, b, kPred);
+				return true;
+			}
+		}
+		return L.fail("stablehlo.compare: unknown direction '" + dir + "'");
 	}
 	if (kind == "TOTALORDER") {
 		return L.unsupported("stablehlo.compare with TOTALORDER");
@@ -1262,8 +1344,13 @@ bool op_convert(Lowering &L, const Val &x, const Ty &to, Val &out) {
 		out = as_type(L, x, to.type);
 		return true;
 	}
+	if (!x.known && x.type == kPred && is_float(to.type)) {
+		// A run-time i1 is already an f32 tensor of 0 and 1.
+		out = as_type(L, as_type(L, x, GGML_TYPE_F32), to.type);
+		return true;
+	}
 	if (!x.known) {
-		return L.unsupported("stablehlo.convert to or from i32 or i1 of a value computed at run time");
+		return L.unsupported("stablehlo.convert to i32 or i1, or from i32, of a value computed at run time");
 	}
 	std::vector<double> hv(x.hv.size());
 	for (size_t i = 0; i < hv.size(); ++i) {
@@ -1306,7 +1393,10 @@ bool op_select(Lowering &L, const Val &p, const Val &a, const Val &b, Val &out) 
 		return L.fail("stablehlo.select: the predicate or the operands do not match");
 	}
 	if (!p.known) {
-		return L.unsupported("stablehlo.select with a predicate computed at run time");
+		if (!on_device(a)) {
+			return L.unsupported("stablehlo.select of i32 values with a predicate computed at run time");
+		}
+		return select_runtime(L, p, a, b, out);
 	}
 	const size_t n = size_t(count_of(a.shape));
 	bool all_true = true, all_false = true;
@@ -1326,8 +1416,11 @@ bool op_select(Lowering &L, const Val &p, const Val &a, const Val &b, Val &out) 
 		out = all_true ? a : b;
 		return true;
 	}
-	Val fa = as_type(L, a, GGML_TYPE_F32);
-	Val fb = as_type(L, b, GGML_TYPE_F32);
+	if (!on_device(a)) {
+		return L.unsupported("stablehlo.select of i32 values computed at run time");
+	}
+	Val fa = device_f32(L, a);
+	Val fb = device_f32(L, b);
 	ggml_tensor *ra = ggml_reshape_2d(L.ctx, contiguous(L, fa.t), 1, int64_t(n));
 	ggml_tensor *rb = ggml_reshape_2d(L.ctx, contiguous(L, fb.t), 1, int64_t(n));
 	ggml_tensor *both = ggml_concat(L.ctx, ra, rb, 1);
@@ -1339,7 +1432,7 @@ bool op_select(Lowering &L, const Val &p, const Val &a, const Val &b, Val &out) 
 	}
 	L.consts[idx] = std::move(bytes);
 	Val o;
-	o.t = ggml_get_rows(L.ctx, both, idx);
+	o.t = select_flush(L, ggml_get_rows(L.ctx, both, idx));
 	o.shape = { int64_t(n), 1 };
 	o.type = GGML_TYPE_F32;
 	out = as_type(L, reshaped(L, o, a.shape), a.type);
@@ -1445,11 +1538,28 @@ bool statement(Lowering &L, const std::string &line) {
 		if (in[0].shape != in[1].shape) {
 			return L.fail("stablehlo." + op + ": operand shapes differ");
 		}
-		if (all_float) {
-			if (op == "minimum" || op == "and" || op == "or" || op == "xor") {
-				return L.unsupported("stablehlo." + op + " of float values");
-			}
+		const bool both_known = in[0].known && in[1].known;
+		const bool minmax = op == "maximum" || op == "minimum";
+		const bool logic = op == "and" || op == "or" || op == "xor";
+		if (all_float && logic) {
+			return L.unsupported("stablehlo." + op + " of float values");
+		}
+		if (all_float && minmax && !(op == "maximum" && (in[0].neg_inf || in[1].neg_inf))) {
+			// XLA's maximum and minimum of values computed at run time (a maximum against a constant -inf is
+			// softmax's no-op, and op_binary returns the other operand for it, as before).
+			const ggml_type rt = in[0].type;
+			out = xla_binary(L, op == "maximum" ? GGML_RD_XLA_MAX : GGML_RD_XLA_MIN, in[0], in[1], GGML_TYPE_F32);
+			out = as_type(L, out, rt);
+			ok = true;
+			folds = false;
+		} else if (all_float) {
 			ok = op_binary(L, op, in[0], in[1], out);
+			folds = false;
+		} else if (!both_known && in[0].type == kPred && in[1].type == kPred && (logic || minmax)) {
+			// i1 values computed at run time are 0 and 1: and is the minimum, or the maximum, xor not-equal.
+			const ggml_rd_xla_binary_kind k = op == "and" || op == "minimum" ? GGML_RD_XLA_MIN : op == "xor" ? GGML_RD_XLA_NE : GGML_RD_XLA_MAX;
+			out = xla_binary(L, k, in[0], in[1], kPred);
+			ok = true;
 			folds = false;
 		} else {
 			ok = host_binary(L, op, in[0], in[1], out);
@@ -1460,6 +1570,11 @@ bool statement(Lowering &L, const std::string &line) {
 		}
 		if (all_float && op != "not") {
 			ok = op_unary(L, op, in[0], out);
+			folds = false;
+		} else if (op == "not" && in[0].type == kPred && !in[0].known) {
+			// not of a run-time i1 (0 or 1) is equal-to-zero.
+			out = xla_binary(L, GGML_RD_XLA_EQ, in[0], known_val(L, kPred, in[0].shape, std::vector<double>(size_t(count_of(in[0].shape)), 0.0)), kPred);
+			ok = true;
 			folds = false;
 		} else {
 			ok = host_unary(L, op, in[0], out);

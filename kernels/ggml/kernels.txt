@@ -109,3 +109,11 @@ conv_transpose_2d_f32
 conv_transpose_2d_f16
 cpy_f32_i32
 rsqrt_zen2_f32
+max_xla_f32
+min_xla_f32
+cmp_gt_xla_f32
+cmp_ge_xla_f32
+cmp_lt_xla_f32
+cmp_le_xla_f32
+cmp_eq_xla_f32
+cmp_ne_xla_f32

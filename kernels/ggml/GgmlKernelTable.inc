@@ -122,6 +122,14 @@ static const KernelDesc kKernels[] = {
 	{ "conv_transpose_2d_f16", { 256, 1, 1 } },
 	{ "cpy_f32_i32", { 256, 1, 1 } },
 	{ "rsqrt_zen2_f32", { 256, 1, 1 } },
+	{ "max_xla_f32", { 256, 1, 1 } },
+	{ "min_xla_f32", { 256, 1, 1 } },
+	{ "cmp_gt_xla_f32", { 256, 1, 1 } },
+	{ "cmp_ge_xla_f32", { 256, 1, 1 } },
+	{ "cmp_lt_xla_f32", { 256, 1, 1 } },
+	{ "cmp_le_xla_f32", { 256, 1, 1 } },
+	{ "cmp_eq_xla_f32", { 256, 1, 1 } },
+	{ "cmp_ne_xla_f32", { 256, 1, 1 } },
 };
 static const uint32_t kKernelCount = sizeof(kKernels) / sizeof(kKernels[0]);
 
